@@ -1,0 +1,1 @@
+{"name":"blnt-discord-monitor","private":true,"type":"module","engines":{"node":">=24"},"scripts":{"test":"node --test test/*.test.mjs","once":"node cli.mjs --once","start":"node cli.mjs","dm":"node dm-worker.mjs"},"dependencies":{"playwright-core":"1.65.1","@stellar/stellar-sdk":"17.4.0","discord.js":"14.28.1"}}

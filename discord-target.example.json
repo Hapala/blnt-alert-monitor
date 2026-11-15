@@ -1,0 +1,8 @@
+{
+  "guildId": "REPLACE_WITH_PRIVATE_GUILD_ID",
+  "channelId": "REPLACE_WITH_PRIVATE_CHANNEL_ID",
+  "channelName": "price-alerts",
+  "webhookName": "BLNT Alerts",
+  "audience": "private",
+  "privacyVerification": "Verify that @everyone cannot view this channel before enabling posting."
+}
