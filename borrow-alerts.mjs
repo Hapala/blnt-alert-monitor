@@ -31,7 +31,12 @@ export function processBorrowing(db,sub,report,selected,config){
       if(recovered)state.armed=true;
       if(breach&&state.armed&&now-state.last>=3600){
         state.sequence++;
-        enqueue(db,`${key}:${state.sequence}`,now,message(`${config.trial?'[PRIVATE TRIAL] ':''}${title}`,description+`\nPool: ${data.name}. Read ${new Date(now*1000).toISOString()}.\nManage with /blnt-alerts capacity, rate or mute.`),config.mode,{audience:sub.id,category,pool});
+        const payload=message(`${config.trial?'[PRIVATE TRIAL] ':''}${category==='capacity'?'⚠️':'📈'} ${title}`,
+          description+`\n\n**Pool:** ${data.name}\nManage with \`/blnt-alerts capacity\`, \`rate\` or \`mute\`.`);
+        payload.embeds[0].color=category==='capacity'?0xF59E0B:0xEF4444;
+        payload.embeds[0].timestamp=new Date(now*1000).toISOString();
+        payload.embeds[0].footer={text:'BLNT • Borrowing alerts'};
+        enqueue(db,`${key}:${state.sequence}`,now,payload,config.mode,{audience:sub.id,category,pool});
         state.armed=false;state.last=now;
       }
       setState(db,key,state);
@@ -39,13 +44,13 @@ export function processBorrowing(db,sub,report,selected,config){
     const c=data.capacity;
     if(c?.ready&&c.relevant){
       const remaining=BigInt(c.remaining),limit=BigInt(c.limit),scale=10n**BigInt(c.quoteDecimals);
-      const details=`Remaining risk-adjusted borrowing headroom: ${c.amountRemaining} ${data.quote} (${c.percentRemaining}% of your limit).\nThis is a risk-adjusted credit measure; the amount of a particular token you can borrow also depends on its liability factor, available liquidity and pool restrictions.`;
+      const details=`Remaining risk-adjusted borrowing headroom: **${c.amountRemaining} ${data.quote}** (**${c.percentRemaining}%** of your limit).\n\nThis is a risk-adjusted credit measure; the amount of a particular token you can borrow also depends on its liability factor, available liquidity and pool restrictions.`;
       if(rule.capacityPercent!=null){const t=decimal(rule.capacityPercent),lhs=remaining*100n*PERCENT;
         const recovery=t+2n*PERCENT>100n*PERCENT?100n*PERCENT:t+2n*PERCENT;
-        notify('capacity-percent','capacity',limit===0n?t>0n:lhs<limit*t,limit>0n&&lhs>=limit*recovery,'Low borrowing capacity',`Your remaining capacity is below ${rule.capacityPercent}%.\n${details}`);
+        notify('capacity-percent','capacity',limit===0n?t>0n:lhs<limit*t,limit>0n&&lhs>=limit*recovery,'Low borrowing capacity',`Your remaining capacity is below **${rule.capacityPercent}%**.\n${details}`);
       }
       if(rule.capacityAmount!=null){const threshold=decimal(rule.capacityAmount,7),lhs=remaining*10000000n,rhs=threshold*scale;
-        notify('capacity-amount','capacity',lhs<rhs,lhs>=rhs+((rhs/10n)>scale*10000000n?rhs/10n:scale*10000000n),'Low borrowing capacity',`Your remaining capacity is below ${rule.capacityAmount} ${data.quote}.\n${details}`);
+        notify('capacity-amount','capacity',lhs<rhs,lhs>=rhs+((rhs/10n)>scale*10000000n?rhs/10n:scale*10000000n),'Low borrowing capacity',`Your remaining capacity is below **${rule.capacityAmount} ${data.quote}**.\n${details}`);
       }
     }else suppressRiskPending(db,sub.id,pool,'capacity');
     const activeRateKeys=new Set();
@@ -54,7 +59,7 @@ export function processBorrowing(db,sub,report,selected,config){
       const t=decimal(rule.borrowApr),value=BigInt(rate.aprRaw)*100n*PERCENT;
       const kind=`rate:${rate.asset}`;activeRateKeys.add(kind);
       const margin=t/10n<PERCENT?t/10n:PERCENT;
-      notify(kind,'borrow_rate',value>t*S7,value<=(t-margin)*S7,'High borrow interest rate',`${rate.symbol} borrow APR is ${rate.aprPercent}%, above your ${rule.borrowApr}% threshold.\n${rate.borrowed?'You have an outstanding borrow in this reserve.':'This is an offered rate in a pool you chose to watch; it is not a charge on your wallet.'}\nAPR is annualized and variable, not APY.\nAsset: ${rate.asset}`);
+      notify(kind,'borrow_rate',value>t*S7,value<=(t-margin)*S7,'High borrow interest rate',`**${rate.symbol}** borrow APR is **${rate.aprPercent}%**, above your **${rule.borrowApr}%** threshold.\n\n${rate.borrowed?'You have an outstanding borrow in this reserve.':'This is an offered rate in a pool you chose to watch; it is not a charge on your wallet.'}\nAPR is annualized and variable, not APY.\nAsset: \`${rate.asset}\``);
     }
     // A rate queued before repayment is no longer a personal borrowing alert.
     for(const row of db.prepare("SELECT id FROM outbox WHERE audience=? AND pool=? AND category='borrow_rate' AND status='pending'").all(sub.id,pool))if(![...activeRateKeys].some(kind=>row.id.includes(`:${kind}:`)))db.prepare("UPDATE outbox SET status='suppressed' WHERE id=?").run(row.id);
