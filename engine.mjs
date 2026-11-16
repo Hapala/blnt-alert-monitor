@@ -31,6 +31,24 @@ export function enqueue(db, id, now, payload, mode, routing={}) {
 export function message(title, description, fields = []) {
   return {username: 'BLNT Alerts', allowed_mentions: {parse: []}, embeds: [{title, description, fields, color: 3447003}]};
 }
+export function dailyStatusMessage(snapshot,c,{preview=false,personal=false}={}) {
+  const groups=new Map(),shown=snapshot.observations.slice(0,20);
+  for(const o of shown){
+    const name=`${o.poolName} · ${o.quote} per asset`;
+    if(!groups.has(name))groups.set(name,[]);
+    groups.get(name).push(`**${o.symbol}** — **${o.priceExact??o.price.toPrecision(8)}** ${o.quote}${o.alertEligible===false?' · cross-check unavailable':''}`);
+  }
+  const fields=[{name:'Data checks',value:`**${snapshot.observations.length}** price observations · **${snapshot.issues.length}** data-quality exclusions\nWebsite cross-check: **${snapshot.crossCheck?.status??'not checked'}**`,inline:false}];
+  for(const [name,lines] of groups){
+    let value='';for(const line of lines){if(value.length+line.length+1>1024){fields.push({name,value,inline:false});value='';}value+=(value?'\n':'')+line;}
+    if(value)fields.push({name,value,inline:false});
+  }
+  const omitted=snapshot.observations.length-shown.length;
+  const payload=message(`${c.trial?'[PRIVATE TRIAL] ':''}${preview?'[SAMPLE] ':''}${personal?'Your':'BLNT'} daily pool status`,
+    `${preview?'**Format preview using current public pool data.** This is an extra sample; the daily schedule is unchanged.\n\n':''}**Pool oracle reference prices**${omitted?` · ${omitted} additional observations not shown`:''}\nFixed V3 quotes **USD**; YieldBlent quotes **USDC**. These quote currencies are not treated as interchangeable.\n\nTrading volume and liquidity are not included. Data checks describe the feeds, not pool safety.`,fields);
+  Object.assign(payload.embeds[0],{color:0x3B82F6,timestamp:new Date(snapshot.observedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'BLNT • Daily snapshot • Oracle references, not execution prices'}});
+  return payload;
+}
 export function processSnapshot(db, snapshot, c) {
   const now = snapshot.observedAt;
   const prefix=c.trial?'[PRIVATE TRIAL] ':'';
@@ -61,14 +79,16 @@ export function processSnapshot(db, snapshot, c) {
         const triggered=exact?reachesThreshold(o.priceRaw,baseline.priceRaw,c.thresholdPercent,direction):signed>=c.thresholdPercent;
         if (rearm) state.armed = true;
         if (triggered && state.armed && now - state.last >= c.cooldownSeconds) {
-          queue(`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`, message(`${prefix}${o.symbol}: ${change >= 0 ? '+' : ''}${change.toFixed(2)}% over ~1 hour`,
-            `${o.poolName}: ${o.priceExact??o.price.toPrecision(8)} ${o.quote} per ${o.symbol}. Pool oracle reference price.`, [
+          const payload=message(`${prefix}${direction==='up'?'📈':'📉'} ${o.symbol}: ${change >= 0 ? '+' : ''}${change.toFixed(2)}% over ~1 hour`,
+            `**Pool:** ${o.poolName}\n**Price:** ${o.priceExact??o.price.toPrecision(8)} **${o.quote} per ${o.symbol}**\n**Move:** **${change>=0?'+':''}${change.toFixed(2)}%**\nPool oracle reference price; not an execution price.`, [
               {name: 'Asset contract', value: o.asset},
               {name: 'Oracle price time (UTC)', value: new Date(o.timestamp * 1000).toISOString()},
               {name: 'Comparison interval', value: `${Math.round((o.timestamp-baseline.t)/60)} minutes between oracle timestamps`},
               {name: 'Read at (UTC)', value: new Date(o.observedAt * 1000).toISOString()},
               {name: 'Source', value: o.sourceUrl},
-            ]),'price',o.pool);
+            ]);
+          Object.assign(payload.embeds[0],{color:direction==='up'?0x22C55E:0xEF4444,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'BLNT • Price movement • Green = rise; red = fall'}});
+          queue(`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`,payload,'price',o.pool);
           state.armed = false; state.last = now;
         }
         setState(db, stateKey, state);
@@ -80,7 +100,7 @@ export function processSnapshot(db, snapshot, c) {
       const before = previous[market.id];
       if (before) for (const asset of market.reserves.filter(a => !before.includes(a))) {
         queue(`${c.mode}:reserve:${market.id}:${asset}:${now}`,
-          message(`${prefix}Pool reserve added`, `${market.name}\nAsset: ${asset}\nObserved: ${new Date(now*1000).toISOString()}.\nhttps://blnt.trade/`),'reserve_updates',market.id);
+          message(`${prefix}Pool reserve added`, `**Pool:** ${market.name}\n**New reserve:** \`${asset}\`\n**Observed (UTC):** ${new Date(now*1000).toISOString()}\nhttps://blnt.trade/`),'reserve_updates',market.id);
       }
       previous[market.id] = market.reserves;
     }
@@ -88,9 +108,7 @@ export function processSnapshot(db, snapshot, c) {
     const local = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone: c.digestTimezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(now * 1000)).map(p => [p.type,p.value]));
     const day = `${local.year}-${local.month}-${local.day}`;
     if (Number(local.hour) >= c.digestHour&&snapshot.observations.length) {
-      const lines = snapshot.observations.map(o => `${o.poolName} / ${o.symbol}: ${o.priceExact??o.price.toPrecision(8)} ${o.quote}`);
-      queue(`${snapshot.source??'website'}:${c.mode}:digest:${day}`, message(`${prefix}${audience==='shared'?'BLNT':'Your'} pool oracle snapshot`,
-        `${lines.slice(0, 20).join('\n')}\n\n${snapshot.issues.length} data-quality exclusions. Website cross-check: ${snapshot.crossCheck?.status??'not checked'}.\nOracle references; trading volume and liquidity are not available.\nRead ${new Date(now*1000).toISOString()}.\nhttps://blnt.trade/`),'digest');
+      queue(`${snapshot.source??'website'}:${c.mode}:digest:${day}`,dailyStatusMessage(snapshot,c,{personal:audience!=='shared'}),'digest');
     }
     if(c.mode==='live'&&c.trial) {
       const o=snapshot.observations.find(o=>o.alertEligible&&o.priceExact);
