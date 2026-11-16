@@ -57,6 +57,8 @@ node verify-borrowing.mjs <Discord-user-ID>
 
 ## Alert behavior and limits
 
+The shared daily status includes each enabled reserve's current variable borrow APR, grouped by pool. Rates are read once when preparing that day's shared digest, using public reserve getters and the same fixed-point rate curve as personal borrowing alerts. No wallet or subscription is needed. APR is annualized, not APY or a personalized charge. Changed pool identities, incomplete reserve coverage and stale previews are shown as unavailable, never as zero. APR availability is independent of the oracle-price website cross-check. Each daily post carries a separate rate timestamp. Personal rules remain off until explicitly configured; command replies spell out percentage, quote-amount and APR thresholds separately.
+
 Price defaults are +/-5% over approximately one hour, one-hour cooldown, re-arm below 3%, continuous-history requirements and a 15-minute maximum source gap. Website checks run initially and every 30 minutes, retrying failures after five minutes. Rounding plus a configurable 0.5% asynchronous-feed allowance is accepted. An unavailable/missing/mismatched/expired check suppresses affected price alerts and capacity calculations; oracle history continues and reserve APR can still be evaluated separately. Website prices never replace oracle prices.
 
 Samples and shared run history use eight-day retention. Personal settings, wallet associations and receipts live in the private runtime database, separate from shared message payloads. Pending messages expire after 15 minutes. Rate-limit retries are bounded. Network/5xx/crash uncertainty requires review and never automatically replays, so exactly-once delivery is not promised.

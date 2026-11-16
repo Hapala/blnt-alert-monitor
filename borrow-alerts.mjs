@@ -66,15 +66,24 @@ export function processBorrowing(db,sub,report,selected,config){
   }
 }
 export function borrowingStatus(sub,report,registry,now){
-  const lines=['Borrowing thresholds are per pool. Amounts use that pool’s oracle quote (USD or USDC); no conversion or peg assumption.'];
+  const p=sub.preferences;
+  const delivery=!sub.enabled?'Stopped — subscription disabled':p.paused?'Paused — no personal alerts will be sent':p.snoozeUntil>now?'Snoozed — personal alerts are temporarily paused':'Active — configured, unmuted rules can send DMs';
+  const lines=[`**Personal alert delivery:** ${delivery}.\n**Not enabled** means no threshold is set; it does not mean the pool or borrowing is disabled. Amounts use each pool’s quote (USD or USDC), without conversion.`];
   for(const pool of registry.pools){
     const r=sub.preferences.riskRules?.[pool.id]??{},data=report?.wallet===sub.wallet?report.pools[pool.id]:null;
-    lines.push(`\n${pool.name} (${pool.quoteLabel}): capacity below ${r.capacityPercent==null?'off':r.capacityPercent+'%'} / ${r.capacityAmount==null?'off':r.capacityAmount+' '+pool.quoteLabel}; borrow APR above ${r.borrowApr==null?'off':r.borrowApr+'%'}; rate scope ${r.rateScope??'borrowed'}.`);
-    if(!report||now-report.checkedAt>180||report.checkedAt>now+15||data?.stale){lines.push('Current borrowing data unavailable/stale.');continue;}
-    if(data?.capacity?.ready)lines.push(`Headroom: ${data.capacity.amountRemaining} ${pool.quoteLabel}, ${data.capacity.percentRemaining}% remaining (risk-adjusted).`);
+    lines.push(`\n**${pool.name}**\n• Capacity percentage: ${r.capacityPercent==null?'Not enabled':`Alert below **${r.capacityPercent}%** remaining`}.\n• Capacity amount: ${r.capacityAmount==null?'Not enabled':`Alert below **${r.capacityAmount} ${pool.quoteLabel}** remaining`}.\n• Borrow interest: ${r.borrowApr==null?'Not enabled':`Alert above **${r.borrowApr}% APR**`}.`);
+    if(r.borrowApr!=null)lines.push(`Rate scope: ${r.rateScope==='selected-pools'?'all enabled borrowing assets in this pool':'only assets you currently borrow'}.`);
+    if(p.mutedPools.includes(pool.id))lines.push('**Pool muted:** its alerts will not be sent.');
+    else {const muted=['capacity','borrow_rate'].filter(v=>p.mutedCategories.includes(v));if(muted.length)lines.push('**Muted:** '+muted.map(v=>v==='capacity'?'capacity alerts':'interest-rate alerts').join(', ')+'.');}
+    if(!report){lines.push('Live data not refreshed in this response; use `/blnt-alerts borrowing`.');continue;}
+    if(now-report.checkedAt>180||report.checkedAt>now+15||data?.stale){lines.push('Current data unavailable or stale; no new borrowing alert is triggered from it.');continue;}
+    if(!data){lines.push('Current data not requested for this pool.');continue;}
+    if(data?.capacity?.ready&&!data.capacity.relevant)lines.push('No collateral or debt positions; capacity alerts do not apply.');
+    else if(data?.capacity?.ready)lines.push(`**Remaining headroom:** ${data.capacity.amountRemaining} ${pool.quoteLabel} (${data.capacity.percentRemaining}% of your risk-adjusted limit).`);
     else lines.push('Capacity unavailable: incomplete or stale cross-check inputs.');
     if(data?.rates?.length)lines.push('Borrow APR: '+data.rates.map(v=>`${v.symbol} ${v.aprPercent}%${v.borrowed?' (borrowed)':''}`).join(', '));
-    else lines.push('No active borrowed reserves in the current rate scope.');
+    else lines.push('No borrowing assets in the current rate scope.');
   }
+  lines.push('\nConfigure with `/blnt-alerts capacity` or `/blnt-alerts rate`; saving one rule leaves the others unchanged.');
   return lines.join('\n');
 }

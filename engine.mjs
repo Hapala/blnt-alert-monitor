@@ -31,6 +31,10 @@ export function enqueue(db, id, now, payload, mode, routing={}) {
 export function message(title, description, fields = []) {
   return {username: 'BLNT Alerts', allowed_mentions: {parse: []}, embeds: [{title, description, fields, color: 3447003}]};
 }
+export function dailyDigestSlot(snapshot,c){
+  const local=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:c.digestTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date(snapshot.observedAt*1000)).map(p=>[p.type,p.value]));
+  return {due:Number(local.hour)>=c.digestHour&&snapshot.observations.length>0,key:`${snapshot.source??'website'}:${c.mode}:digest:${local.year}-${local.month}-${local.day}`};
+}
 export function dailyStatusMessage(snapshot,c,{preview=false,personal=false}={}) {
   const groups=new Map(),shown=snapshot.observations.slice(0,20);
   for(const o of shown){
@@ -43,9 +47,20 @@ export function dailyStatusMessage(snapshot,c,{preview=false,personal=false}={})
     let value='';for(const line of lines){if(value.length+line.length+1>1024){fields.push({name,value,inline:false});value='';}value+=(value?'\n':'')+line;}
     if(value)fields.push({name,value,inline:false});
   }
+  const report=snapshot.borrowRates,rateFresh=report&&Math.abs(report.checkedAt-snapshot.observedAt)<=180;
+  for(const pool of snapshot.markets){
+    const data=rateFresh?report.pools.find(p=>p.id===pool.id):null,name=`${pool.name} · Borrow interest (APR)`;
+    if(!data?.available){fields.push({name,value:'**Unavailable** — current reserve rates could not be verified. No rate is assumed.',inline:false});continue;}
+    const lines=data.rates.map(r=>`**${r.symbol}** — **${r.aprPercent}% APR**`);
+    if(data.disabledReserves)lines.push(`${data.disabledReserves} disabled reserve(s) excluded.`);
+    if(!lines.length)lines.push('No enabled borrowing reserves.');
+    let value='';for(const line of lines){if(value.length+line.length+1>1024){fields.push({name,value,inline:false});value='';}value+=(value?'\n':'')+line;}
+    if(value)fields.push({name,value,inline:false});
+  }
+  if(rateFresh)fields.push({name:'Rate snapshot (UTC)',value:new Date(report.checkedAt*1000).toISOString(),inline:false});
   const omitted=snapshot.observations.length-shown.length;
   const payload=message(`${c.trial?'[PRIVATE TRIAL] ':''}${preview?'[SAMPLE] ':''}${personal?'Your':'BLNT'} daily pool status`,
-    `${preview?'**Format preview using current public pool data.** This is an extra sample; the daily schedule is unchanged.\n\n':''}**Pool oracle reference prices**${omitted?` · ${omitted} additional observations not shown`:''}\nFixed V3 quotes **USD**; YieldBlent quotes **USDC**. These quote currencies are not treated as interchangeable.\n\nTrading volume and liquidity are not included. Data checks describe the feeds, not pool safety.`,fields);
+    `${preview?'**Format preview using current public pool data.** This is an extra sample; the daily schedule is unchanged.\n\n':''}**Pool oracle reference prices and borrow APRs**${omitted?` · ${omitted} additional price observations not shown`:''}\nFixed V3 quotes **USD**; YieldBlent quotes **USDC**. These quote currencies are not treated as interchangeable.\n**Borrow APR** is the current variable annualized borrowing rate for each asset, **not APY** or a wallet-specific charge.\n\nTrading volume and liquidity are not included. Data checks describe the feeds, not pool safety.`,fields);
   Object.assign(payload.embeds[0],{color:0x3B82F6,timestamp:new Date(snapshot.observedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'BLNT • Daily snapshot • Oracle references, not execution prices'}});
   return payload;
 }
@@ -105,10 +120,9 @@ export function processSnapshot(db, snapshot, c) {
       previous[market.id] = market.reserves;
     }
     setState(db, marketKey, previous);
-    const local = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone: c.digestTimezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(now * 1000)).map(p => [p.type,p.value]));
-    const day = `${local.year}-${local.month}-${local.day}`;
-    if (Number(local.hour) >= c.digestHour&&snapshot.observations.length) {
-      queue(`${snapshot.source??'website'}:${c.mode}:digest:${day}`,dailyStatusMessage(snapshot,c,{personal:audience!=='shared'}),'digest');
+    const digest=dailyDigestSlot(snapshot,c);
+    if (digest.due) {
+      queue(digest.key,dailyStatusMessage(snapshot,c,{personal:audience!=='shared'}),'digest');
     }
     if(c.mode==='live'&&c.trial) {
       const o=snapshot.observations.find(o=>o.alertEligible&&o.priceExact);

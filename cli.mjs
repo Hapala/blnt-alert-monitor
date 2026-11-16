@@ -5,7 +5,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {WebsiteCollector} from './collector.mjs';
 import {OracleCollector,SOURCE} from './oracle-collector.mjs';
 import {compareWebsite,applyCrossCheck} from './cross-check.mjs';
-import {openStore, getState, setState} from './engine.mjs';
+import {openStore, getState, setState,dailyDigestSlot} from './engine.mjs';
+import {collectPublicRates} from './borrow-collector.mjs';
 import {deliver,verifyWebhookTarget} from './webhook.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +80,14 @@ try {
         }
         if(stopping)break;
         applyCrossCheck(snapshot,check,c);
+        const digest=dailyDigestSlot(snapshot,c);
+        // Collect all public reserve APRs only when preparing a new shared daily
+        // digest. Minute-by-minute price polling does not add reserve simulations.
+        if(digest.due&&!db.prepare('SELECT 1 FROM outbox WHERE id=?').get(digest.key)){
+          try{snapshot.borrowRates=await collectPublicRates(collector.registry,c);}
+          catch{snapshot.borrowRates={checkedAt:snapshot.observedAt,pools:[]};}
+        }
+        if(stopping)break;
         const {processSnapshot} = await import('./engine.mjs');
         processSnapshot(db,snapshot,c);
         atomicJson(resolve(data,'latest.json'),snapshot);

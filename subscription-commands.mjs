@@ -48,7 +48,7 @@ export function applyCommand(db,id,name,args,registry,now) {
       else {if(args.apr!=null)r.borrowApr=String(args.apr);if(args.scope!=null)r.rateScope=args.scope;}
       r.version++;p.riskRules[args.pool]=r;
     },registry);
-    return 'Borrowing rule saved. '+borrowingStatus(changed,null,registry,now);
+    return '**Borrowing rule saved.** Other thresholds are unchanged.\n'+borrowingStatus(changed,null,registry,now);
   }
   if(name==='borrowing')return borrowingStatus(current,getState(db,`borrowing:${id}`,null),registry,now);
   if(name==='unsubscribe'){disableSubscriber(db,id);return 'Unsubscribed. Pending personal notifications were suppressed.';}
@@ -77,7 +77,7 @@ export function applyCommand(db,id,name,args,registry,now) {
     const discovery=getState(db,`discovery:${id}`,null),names=ids=>ids.map(v=>registry.pools.find(p=>p.id===v)?.name??v).join(', ')||'none';
     const automatic=Object.entries(discovery?.pools??{}).filter(([,p])=>p.associated).map(([v])=>v);
     const stale=Object.values(discovery?.pools??{}).some(p=>p.stale);
-    return `Wallet: ${current.wallet}\nEnabled: ${Boolean(current.enabled)}; paused: ${current.preferences.paused}\nAutomatic pools: ${names(automatic)}${stale?' (discovery incomplete/stale)':''}\nExtra pools: ${names(current.preferences.extraPools)}\nMuted pools: ${names(current.preferences.mutedPools)}\nMuted categories: ${current.preferences.mutedCategories.join(', ')||'none'}\nSnooze until: ${current.preferences.snoozeUntil?new Date(current.preferences.snoozeUntil*1000).toISOString():'none'}\nDM delivery blocked: ${Boolean(getState(db,`dm-delivery:${id}`,{}).blocked)}\nDiscovery time: ${discovery?new Date(discovery.checkedAt*1000).toISOString():'not checked yet'}\nBorrowing thresholds: /blnt-alerts borrowing (off until configured).`;
+    return `**Wallet:** ${current.wallet}\n**Subscription:** ${current.enabled?'Subscribed':'Unsubscribed'}\n**Personal alerts:** ${current.preferences.paused?'Paused':'Not paused'}\n**Automatic pools:** ${names(automatic)}${stale?' (discovery incomplete/stale)':''}\n**Extra pools:** ${names(current.preferences.extraPools)}\n**Muted pools:** ${names(current.preferences.mutedPools)}\n**Muted categories:** ${current.preferences.mutedCategories.join(', ')||'none'}\n**Snooze:** ${current.preferences.snoozeUntil>now?'Until '+new Date(current.preferences.snoozeUntil*1000).toISOString():'Not snoozed'}\n**DM delivery:** ${getState(db,`dm-delivery:${id}`,{}).blocked?'Blocked — allow DMs, then use /blnt-alerts resume':'Not blocked'}\n**Discovery time:** ${discovery?new Date(discovery.checkedAt*1000).toISOString():'Not checked yet'}\n**Borrowing alerts:** ${Object.values(current.preferences.riskRules??{}).some(r=>r.capacityPercent!=null||r.capacityAmount!=null||r.borrowApr!=null)?'Thresholds configured; pause and mute settings still apply.':'Not enabled — no capacity or interest-rate thresholds set.'} Use /blnt-alerts borrowing for each pool’s rules.`;
   }
   if(name==='test'){if(!current.enabled)throw Error('Subscribe again before requesting a test');return 'test';}
   throw Error('Unknown BLNT subscription command');

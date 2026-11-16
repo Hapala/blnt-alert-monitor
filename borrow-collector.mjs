@@ -1,6 +1,33 @@
 import {Address} from '@stellar/stellar-sdk';
 import {selectProvider,symbolKey} from './public-rpc.mjs';
 import {capacity,borrowAprRaw,positionEntries,validateReserve,integer} from './borrow-math.mjs';
+// Public reserve data only: no wallet positions, subscriptions or alert rules.
+export async function collectPublicRates(registry,config,selector=selectProvider){
+  const selected=await selector(config.publicRpcProviders),{rpc}=selected,pools=[];
+  for(const pool of registry.pools){
+    try{
+      const instance=await rpc.instance(pool.id);
+      if(instance.hash!==pool.wasmHash||instance.storage.Config?.oracle!==pool.oracle)throw Error('Pool identity changed');
+      const list=await rpc.data(pool.id,symbolKey('ResList'));
+      if(!Array.isArray(list)||!list.length||list.length>config.maxAssetsPerPool||new Set(list).size!==list.length)throw Error('Invalid reserve coverage');
+      const rates=[];let disabledReserves=0;
+      for(const asset of list){
+        const reserve=validateReserve(await rpc.getter(pool.id,'get_reserve',[new Address(asset).toScVal()]));
+        if(reserve.asset!==asset||list[Number(integer(reserve.config.index))]!==asset)throw Error('Reserve binding changed');
+        const at=Number(integer(reserve.data.last_time));
+        if(at<selected.ledgerTime-15||at>selected.ledgerTime+config.maxCycleSeconds)throw Error('Stale reserve preview');
+        if(!reserve.config.enabled){disabledReserves++;continue;}
+        rates.push({asset,symbol:registry.symbols[asset]??asset.slice(0,12),observedAt:at,...borrowAprRaw(reserve)});
+      }
+      pools.push({id:pool.id,name:pool.name,available:true,rates,disabledReserves});
+    }catch{pools.push({id:pool.id,name:pool.name,available:false,rates:[]});}
+  }
+  const end=await rpc.health();
+  if(end.ledger<selected.ledger||end.ledgerTime-selected.ledgerTime>config.maxCycleSeconds)throw Error('Public rate collection span invalid');
+  // Reject a long/invalid preview instead of presenting old rates as current.
+  for(const pool of pools)if(pool.rates.some(r=>r.observedAt>end.ledgerTime+15||end.ledgerTime-r.observedAt>180)){pool.available=false;pool.rates=[];}
+  return {checkedAt:end.ledgerTime,ledger:end.ledger,provider:rpc.url,pools};
+}
 export async function collectBorrowing(sub,poolIds,snapshot,registry,config,selector=selectProvider){
   const selected=await selector(config.publicRpcProviders),{rpc}=selected,pools={};
   if(selected.ledgerTime-snapshot.observedAt>180||snapshot.observedAt>selected.ledgerTime+15)throw Error('Fresh primary snapshot required for borrowing checks');

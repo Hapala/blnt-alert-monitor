@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {collectPublicRates} from '../borrow-collector.mjs';
+import {dailyStatusMessage,dailyDigestSlot} from '../engine.mjs';
+import {borrowingStatus} from '../borrow-alerts.mjs';
+const registry=JSON.parse(readFileSync(new URL('../markets.json',import.meta.url))),pool=registry.pools[0],asset=Object.keys(registry.symbols)[0],now=1800000000;
+const config=JSON.parse(readFileSync(new URL('../config.json',import.meta.url)));
+function fixture(){
+ const reserve={asset,scalar:10000000n,config:{index:0,decimals:7,c_factor:7500000,l_factor:7500000,util:7500000,r_base:100000,r_one:500000,r_two:5000000,r_three:15000000,enabled:true},data:{b_rate:1000000000000n,d_rate:1000000000000n,b_supply:1000000000n,d_supply:750000000n,ir_mod:10000000n,last_time:BigInt(now)}};
+ const rpc={url:'mock',instance:async()=>({hash:pool.wasmHash,storage:{Config:{oracle:pool.oracle}}}),data:async()=>[asset],getter:async(_id,method)=>{assert.equal(method,'get_reserve','Public rates must never query wallet positions');return reserve;},health:async()=>({ledger:10,ledgerTime:now})};
+ return {reserve,rpc,collect:()=>collectPublicRates({...registry,pools:[pool]},config,async()=>({rpc,ledger:10,ledgerTime:now}))};
+}
+test('public APR collection uses reserve-only getters and rejects stale, changed and incomplete pool data',async()=>{
+ const f=fixture();let result=await f.collect();assert.equal(result.pools[0].rates[0].aprPercent,'6');assert.equal(result.pools[0].available,true);assert.equal(result.wallet,undefined);
+ f.reserve.config.enabled=false;result=await f.collect();assert.deepEqual(result.pools[0].rates,[]);assert.equal(result.pools[0].disabledReserves,1);
+ f.reserve.data.last_time=BigInt(now-1000);assert.equal((await f.collect()).pools[0].available,false);
+ f.reserve.data.last_time=BigInt(now);f.reserve.asset=registry.pools[0].id;assert.equal((await f.collect()).pools[0].available,false);
+ f.rpc.instance=async()=>({hash:'changed',storage:{}});assert.equal((await f.collect()).pools[0].available,false);
+});
+test('daily APR fields respect selected pools, disclose missing rates and never turn missing data into zero',()=>{
+ const other=registry.pools[1];const snapshot={source:'oracle',observedAt:now,markets:[{id:pool.id,name:pool.name}],issues:[],observations:[],borrowRates:{checkedAt:now,pools:[{id:pool.id,available:true,rates:[{symbol:'TEST',aprPercent:'12.3456789'}]},{id:other.id,available:true,rates:[{symbol:'UNSELECTED',aprPercent:'9'}]}]}};
+ let payload=dailyStatusMessage(snapshot,config);assert.match(JSON.stringify(payload),/12.3456789% APR/);assert.doesNotMatch(JSON.stringify(payload),/UNSELECTED/);assert.match(payload.embeds[0].description,/not APY/);
+ snapshot.borrowRates.checkedAt=now-181;payload=dailyStatusMessage(snapshot,config);assert.match(JSON.stringify(payload),/Unavailable/);assert.doesNotMatch(JSON.stringify(payload),/12.3456789|0% APR/);
+ const observations=[{pool:pool.id,poolName:pool.name,symbol:'TEST',priceExact:'1',quote:'USD'}];
+ const before={...snapshot,observations,observedAt:Date.parse('2026-11-16T08:59:00Z')/1000},after={...before,observedAt:Date.parse('2026-11-16T09:00:00Z')/1000},schedule={...config,digestTimezone:'UTC'};
+ assert.equal(dailyDigestSlot(before,schedule).due,false);assert.equal(dailyDigestSlot(after,schedule).due,true);assert.match(dailyDigestSlot(after,schedule).key,/2026-11-16$/);
+});
+test('borrowing responses separate disabled thresholds from configured rules and effective mute controls',()=>{
+ const sub={enabled:1,wallet:'synthetic',preferences:{riskRules:{},paused:false,snoozeUntil:0,mutedPools:[],mutedCategories:[]}};
+ let text=borrowingStatus(sub,null,registry,now);assert.match(text,/Capacity percentage: Not enabled/);assert.match(text,/Capacity amount: Not enabled/);assert.match(text,/Borrow interest: Not enabled/);assert.doesNotMatch(text,/off.*\/.*off/);assert.ok(text.length<=2000);
+ sub.preferences.riskRules[pool.id]={capacityPercent:'20',borrowApr:'10',rateScope:'borrowed'};sub.preferences.mutedPools=[pool.id];text=borrowingStatus(sub,null,registry,now);
+ assert.match(text,/below \*\*20%/);assert.match(text,/above \*\*10% APR/);assert.match(text,/Pool muted/);assert.match(text,/only assets you currently borrow/);assert.ok(text.length<=2000);
+});
