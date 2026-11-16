@@ -8,7 +8,7 @@ import {initSubscriptions,getSubscriber,selectedPools} from './subscriptions.mjs
 import {collectBorrowing} from './borrow-collector.mjs';
 import {borrowingStatus} from './borrow-alerts.mjs';
 import {commandDefinition,applyCommand} from './subscription-commands.mjs';
-import {DiscordApi,loadDmToken} from './dm-api.mjs';
+import {DiscordApi,loadDmToken,loadBotTarget,verifyCommandOrigin} from './dm-api.mjs';
 import {subscriptionTick} from './dm-runtime.mjs';
 const home=resolve(process.env.BLNT_MONITOR_HOME??dirname(fileURLToPath(import.meta.url))),data=resolve(home,'data');
 mkdirSync(data,{recursive:true,mode:0o700});
@@ -20,7 +20,8 @@ try {
 }catch{console.error('DM worker lock exists; inspect the running process before recovery');process.exit(1);}
 const db=openStore(resolve(data,'monitor.sqlite'));db.exec('PRAGMA busy_timeout=5000');initSubscriptions(db);
 const registry=JSON.parse(readFileSync(resolve(home,'markets.json'),'utf8'));
-const api=new DiscordApi(loadDmToken());
+const botTarget=loadBotTarget(),botToken=loadDmToken();
+const api=new DiscordApi(botToken);
 const client=new Client({intents:[],allowedMentions:{parse:[]}});
 let stopping=false;
 const status=value=>{writeFileSync(resolve(data,'dm-status.json.tmp'),JSON.stringify(value,null,2)+'\n',{mode:0o600});renameSync(resolve(data,'dm-status.json.tmp'),resolve(data,'dm-status.json'));};
@@ -29,6 +30,7 @@ client.on('interactionCreate',async interaction=>{
   if(!interaction.isChatInputCommand()||interaction.commandName!=='blnt-alerts')return;
   try {
     await interaction.deferReply({flags:MessageFlags.Ephemeral});
+    await verifyCommandOrigin(api,botTarget.guildId,interaction.user.id,interaction.guildId);
     const name=interaction.options.getSubcommand(),id=interaction.user.id,args={};
     for(const key of ['wallet','pool','category','amount','scope'])args[key]=interaction.options.getString(key);
     args.minutes=interaction.options.getInteger('minutes');
@@ -54,8 +56,10 @@ client.on('interactionCreate',async interaction=>{
   }
 });
 try {
-  const me=await api.identity();
-  // Upsert only our command; never bulk-replace OpenClaw's command registry.
+  const me=await api.identity(botTarget.applicationId);
+  const guilds=await api.request('GET','/users/@me/guilds');
+  if(!guilds.some(g=>g.id===botTarget.guildId))throw Error('Dedicated bot is not installed in its pinned BLNT server');
+  // Upsert only our command on the dedicated application.
   const definition=commandDefinition(registry),commandPath=`/applications/${me.id}/commands`;
   const ensureCommand=async(update=false)=>{
     const commands=await api.request('GET',commandPath),existing=commands.find(c=>c.name===definition.name);
@@ -64,13 +68,12 @@ try {
     return existing??await api.request('POST',commandPath,definition);
   };
   const command=await ensureCommand(true);let lastRegistrationCheck=performance.now();
-  await client.login(loadDmToken());
+  await client.login(botToken);
   console.log(JSON.stringify({botId:me.id,commandId:command.id,privilegedIntents:false}));
   const stop=()=>{stopping=true;client.destroy();};process.on('SIGINT',stop);process.on('SIGTERM',stop);
   do {
     try {
-      // OpenClaw may rebuild its own registry on restart. Restore only our
-      // command if it disappears, preserving every OpenClaw command.
+      // Repair only this application's command if it disappears.
       if(performance.now()-lastRegistrationCheck>=300000){await ensureCommand();lastRegistrationCheck=performance.now();}
       const config=JSON.parse(readFileSync(resolve(home,'config.json'),'utf8'));
       if(config.mode==='live'&&process.env.BLNT_PUBLISH_APPROVED!=='true')throw Error('DM publishing approval missing');

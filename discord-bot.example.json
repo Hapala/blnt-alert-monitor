@@ -1,0 +1,5 @@
+{
+  "purpose": "blnt-alerts-only",
+  "applicationId": "REPLACE_WITH_DEDICATED_BOT_APPLICATION_ID",
+  "guildId": "REPLACE_WITH_BLNT_GUILD_ID"
+}

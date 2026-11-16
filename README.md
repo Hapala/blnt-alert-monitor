@@ -30,7 +30,7 @@ Only network/health checks, ledger reads and unsigned simulations of allowlisted
 
 The checked-in `config.json` is a dry-run template. Copy `discord-target.example.json` to `discord-target.json` and set the intended private channel/guild IDs. Verify channel privacy in Discord: webhook metadata confirms routing, but cannot prove channel permissions. Keep the channel unsynced from public category permissions.
 
-The shared webhook URL belongs in `secrets/discord_webhook`, directory mode 0700, file mode 0600. The DM worker reads an existing bot credential from the `default` Discord account in OpenClaw's configuration; override the configuration path with `BLNT_OPENCLAW_CONFIG` and account with `BLNT_DISCORD_ACCOUNT`. Never commit credentials. The bot needs to be accessible to subscribers; the pilot uses an existing mutual server. It needs no privileged gateway intents and reads no message content.
+The shared webhook URL belongs in `secrets/discord_webhook`, directory mode 0700, file mode 0600. The DM worker uses a separate BLNT Alerts bot. Its token belongs in `secrets/discord_bot_token` (0600); copy `discord-bot.example.json` to the ignored runtime `discord-bot.json` to pin its application and guild IDs. There is no OpenClaw credential fallback. Never commit credentials. Install the bot in the intended server with only bot/application-command scopes and zero requested server permissions. It needs no privileged gateway intents and reads no message content. See DEDICATED_BOT.md for migration and service isolation.
 
 ```sh
 BLNT_BROWSER_PATH=/path/to/chrome node cli.mjs --once

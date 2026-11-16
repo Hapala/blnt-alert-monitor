@@ -2,7 +2,7 @@
 
 The user chose DMs for personal alerts on November 15, 2026. Shared updates continue through the existing private #price-alerts webhook. Personal queues are recipient-scoped and cannot be consumed by that webhook. No per-subscriber channels are created.
 
-The pilot uses the existing Openclaw Coder bot/account `default`, reading its credential in place from `/home/hermes/.openclaw/openclaw.json`. No new token or OpenClaw configuration change is required. The bot already shares Michael's OpenClaw server with the first subscriber. It is not installed in BLNT Trade; broader onboarding will need the bot to be accessible to those users. The worker uses no privileged intents and reads no message content. It handles only the `/blnt-alerts` interaction. OpenClaw's other commands are preserved; the worker restores its own command within five minutes if an OpenClaw restart removes it.
+The dedicated BLNT Alerts bot delivers personal messages and owns /blnt-alerts. It uses its own private token file and pinned application identity, with no OpenClaw credential fallback. The service is denied access to personal OpenClaw files and listens only for slash-command interactions, with no privileged intents or message-content access. See DEDICATED_BOT.md for installation, isolation and migration details.
 
 ## User controls
 

@@ -13,4 +13,5 @@ PAUSED
 !.env.example
 __pycache__/
 discord-target.json
+discord-bot.json
 OPENCLAW_HANDOFF.md
