@@ -13,6 +13,7 @@ The dedicated BLNT Alerts bot delivers personal messages and owns /blnt-alerts. 
 - `/blnt-alerts mute category:<choice>` mutes price, digest, reserve_updates, format_preview or subscription_status. Category `all` pauses personal notifications.
 - `/blnt-alerts pause`, `resume`, `snooze minutes:<number>` and `unsubscribe` control delivery. Resume also retries future eligible delivery after DMs were blocked; old blocked messages are not replayed.
 - `/blnt-alerts test` requests a labelled DM delivery test.
+- `/blnt-alerts forget confirm:DELETE`, after unsubscribing, erases the caller's current local subscription and history. Existing Discord messages remain; private rollback backups expire within 30 days.
 
 The caller ID comes from the authenticated Discord interaction, never from a recipient argument. Settings responses are ephemeral. The user-provided wallet is a public address, not proof of wallet ownership; this service reads public state and cannot sign transactions. An invalid/secret address is rejected. First-subscriber registration via `bootstrap-subscriber.mjs` is an operator-only path requiring explicit consent and a verified Discord ID.
 
@@ -26,6 +27,6 @@ Closed DMs stop retries until explicit resume. Rate limits have bounded retries;
 
 ## Operations
 
-`bash deploy-subscriptions.sh` updates only the managed monitor, preserving its live config and shared webhook credential. It stops both SQLite writers for backup/migration, installs pinned dependencies, runs the suite, restarts shared monitoring and installs the separate `blnt-dm-alerts.service`. Start the DM unit only after registering an explicitly consenting subscriber.
+`bash deploy-subscriptions.sh` requires administrator access and uses a complete tested candidate release before stopping live workers. It preserves config/credentials, backs up stopped SQLite writers and restores the previous release and active-worker states on failure. Both system services run as the dedicated `blnt-alerts` OS account under `/var/lib/blnt-alert-monitor`; source releases are root-owned under `/opt/blnt-alert-monitor/releases`. Start the DM unit only for explicitly consenting subscribers.
 
-`node inspect-subscriber.mjs <Discord user ID>` reports discovery and delivery receipts without printing the wallet or bot token. `data/dm-status.json` reports worker health. Stop personal delivery with `systemctl --user stop blnt-dm-alerts`; shared monitoring continues. To pause both services use the monitor's PAUSED file or config flag. No RPC/Core/PM2 services are changed.
+Run operator scripts with `BLNT_MONITOR_HOME=/var/lib/blnt-alert-monitor` using the `blnt-alerts` account and `/opt/blnt-alert-monitor/current/<script>`. `data/dm-status.json` includes a worker heartbeat. Stop personal delivery with `sudo systemctl stop blnt-dm-alerts`; shared monitoring continues. Scheduled delivery rechecks membership, applies fresh elapsed-time checks and yields fairly across subscribers. Commands have cooldown/concurrency limits. To pause scheduled delivery use the runtime PAUSED file or config flag. No personal OpenClaw/RPC/Core/PM2 services are changed.

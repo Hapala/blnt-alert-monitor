@@ -65,7 +65,8 @@ test('capacity and APR alerts deduplicate, cancel recovered pending alerts and r
   const db=setup();applyCommand(db,id,'capacity',{pool:P,percent:20},registry,now);
   processBorrowing(db,getSubscriber(db,id),report(),[P],config);processBorrowing(db,getSubscriber(db,id),report(now+60),[P],config);assert.equal(outbox(db).length,1);
   processBorrowing(db,getSubscriber(db,id),report(now+120,'23'),[P],config);assert.equal(outbox(db)[0].status,'suppressed');
-  processBorrowing(db,getSubscriber(db,id),report(now+180),[P],config);assert.equal(outbox(db).length,1);
+  // The cancelled warning was never delivered, so a new breach is eligible.
+  processBorrowing(db,getSubscriber(db,id),report(now+180),[P],config);assert.equal(outbox(db).length,2);
   processBorrowing(db,getSubscriber(db,id),report(now+3601),[P],config);assert.equal(outbox(db).length,2);db.close();
 });
 test('unconfigured, muted, paused, unselected, stale and wrong-wallet borrowing reports never send',()=>{

@@ -8,6 +8,8 @@ import {compareWebsite,applyCrossCheck} from './cross-check.mjs';
 import {openStore, getState, setState,dailyDigestSlot} from './engine.mjs';
 import {collectPublicRates} from './borrow-collector.mjs';
 import {deliver,verifyWebhookTarget} from './webhook.mjs';
+import {prunePersonal} from './retention.mjs';
+if(process.argv.includes('--check-install')){console.log('Shared entry point imports verified');process.exit(0);}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const home = resolve(process.env.BLNT_MONITOR_HOME ?? here);
@@ -84,14 +86,16 @@ try {
         // Collect all public reserve APRs only when preparing a new shared daily
         // digest. Minute-by-minute price polling does not add reserve simulations.
         if(digest.due&&!db.prepare('SELECT 1 FROM outbox WHERE id=?').get(digest.key)){
-          try{snapshot.borrowRates=await collectPublicRates(collector.registry,c);}
+          try{snapshot.borrowRates=await collectPublicRates(collector.registry,c);setState(db,'publicBorrowRates',snapshot.borrowRates);}
           catch{snapshot.borrowRates={checkedAt:snapshot.observedAt,pools:[]};}
         }
+        if(!snapshot.borrowRates){const rates=getState(db,'publicBorrowRates',null);if(rates&&snapshot.observedAt-rates.checkedAt>=-15&&snapshot.observedAt-rates.checkedAt<=180)snapshot.borrowRates=rates;}
         if(stopping)break;
         const {processSnapshot} = await import('./engine.mjs');
         processSnapshot(db,snapshot,c);
+        prunePersonal(db);
         atomicJson(resolve(data,'latest.json'),snapshot);
-        const status = {observedAt:snapshot.observedAt,mode:c.mode,ready:snapshot.issues.length===0&&snapshot.observations.length>0&&snapshot.observations.every(o=>o.alertEligible),source:SOURCE,sourceTimestampAvailable:true,
+        const status = {releaseId:process.env.BLNT_RELEASE_ID??'development',observedAt:snapshot.observedAt,mode:c.mode,ready:snapshot.issues.length===0&&snapshot.observations.length>0&&snapshot.observations.every(o=>o.alertEligible),source:SOURCE,sourceTimestampAvailable:true,
           provider:snapshot.provider,reference:snapshot.reference,ledger:snapshot.ledger,hostClockDifferenceSeconds:snapshot.hostClockDifferenceSeconds,crossCheck:snapshot.crossCheck,
           freshPrices:snapshot.observations.length,issues:snapshot.issues,
           startedAt:getState(db,'firstStartedAt',now),outbox:db.prepare('SELECT status,COUNT(*) AS count FROM outbox GROUP BY status').all()};

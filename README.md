@@ -39,18 +39,19 @@ bash deploy-dry-run.sh
 bash deploy-subscriptions.sh
 ```
 
-`deploy-dry-run.sh` installs the shared collector under `$HOME/blnt-alert-monitor` and refuses to overwrite a live config. `deploy-subscriptions.sh` upgrades that managed installation, stops both database writers for a SQLite/WAL backup, preserves the live config and shared webhook, runs tests and restores active services. Host-specific target configuration and operator handoff notes are excluded from Git. Source and runtime configuration are separate: never overwrite a live configuration with the source dry-run template.
+Deployment requires administrator access. Both scripts use `deploy-isolated.py` to stage a complete immutable release under `/opt/blnt-alert-monitor/releases`, install locked dependencies without package scripts, run tests and verify executable imports. A real website cross-check runs under live service restrictions before activation. The account is `blnt-alerts`, with no login shell; runtime files live under `/var/lib/blnt-alert-monitor`. Both system services deny access to personal home directories and Windows mounts. The DM service masks the shared webhook credential; the shared service masks the bot token.
+
+`deploy-dry-run.sh` installs only a new dry-run shared collector and refuses existing configurations. `deploy-subscriptions.sh` prepares and tests before stopping workers, backs up both stopped database writers, then switches units to the tested release. Activation verifies fresh heartbeats, source readiness and unchanged preferences. Failure restores the previous release and both previously active workers. First migration retains the old private runtime temporarily for rollback and disables its user services after success. No OpenClaw files are copied or modified. Never overwrite live config with the source template.
 
 To activate real messages, explicitly authorize the destination, set runtime `mode=live`, and supply `BLNT_PUBLISH_APPROVED=true` to the appropriate service. Trial messages use `trial=true` labels. Activation is a deliberate operator action; installing source does not constitute consent from a subscriber. Use `/blnt-alerts subscribe` for self-service opt-in, or the operator-only `bootstrap-subscriber.mjs <verified Discord ID> <public address>` after explicit consent. New borrowing thresholds remain off until the user configures them.
 
 ```sh
-systemctl --user status blnt-alert-monitor blnt-dm-alerts
-cat "$HOME/blnt-alert-monitor/data/status.json"
-cat "$HOME/blnt-alert-monitor/data/dm-status.json"
-cd "$HOME/blnt-alert-monitor"
-node report.mjs
-node inspect-subscriber.mjs <Discord-user-ID>
-node verify-borrowing.mjs <Discord-user-ID>
+sudo systemctl status blnt-alert-monitor blnt-dm-alerts
+sudo cat /var/lib/blnt-alert-monitor/data/status.json
+sudo cat /var/lib/blnt-alert-monitor/data/dm-status.json
+sudo -u blnt-alerts env BLNT_MONITOR_HOME=/var/lib/blnt-alert-monitor node /opt/blnt-alert-monitor/current/report.mjs
+sudo -u blnt-alerts env BLNT_MONITOR_HOME=/var/lib/blnt-alert-monitor node /opt/blnt-alert-monitor/current/inspect-subscriber.mjs <Discord-user-ID>
+sudo -u blnt-alerts env BLNT_MONITOR_HOME=/var/lib/blnt-alert-monitor node /opt/blnt-alert-monitor/current/verify-borrowing.mjs <Discord-user-ID>
 ```
 
 `verify-borrowing.mjs` performs read-only current-state verification and caches personal results privately; it sends no messages and does not enable rules. `/blnt-alerts borrowing` refreshes personal results through Discord with an ephemeral response.
@@ -65,6 +66,10 @@ Samples and shared run history use eight-day retention. Personal settings, walle
 
 A pool mute wins over automatic discovery and extra pools. Failed discovery retains the previous association as stale and suppresses automatic selection. A changed selection cancels pending multi-pool digests. Closed DMs stop retries until explicit resume. The pilot is limited to 20 enabled subscribers pending public-provider capacity review.
 
-Set `paused=true` in runtime config or create the runtime `PAUSED` file to pause both services' delivery. Stop personal alerts independently with `systemctl --user stop blnt-dm-alerts`; shared collection continues. Never copy a running SQLite database without its backup API; deployment scripts stop writers before copying SQLite/WAL files.
+Set `paused=true` in runtime config or create the runtime `PAUSED` file to pause scheduled delivery. Stop personal alerts independently with `sudo systemctl stop blnt-dm-alerts`; shared collection continues. Never copy a running SQLite database without its backup API; deployment stops writers before copying SQLite/WAL files.
+
+Preference edits cancel only affected messages. Definitely unsent cancelled/expired warnings can re-arm; sent, in-flight and uncertain outcomes never automatically replay. Borrowing/test commands have per-user cooldowns and a global work limit. Scheduled delivery revalidates server membership (cached at most one minute); confirmed removal disables the subscription. Former members retain unsubscribe/erase controls. A monotonic ledger-anchored clock rechecks freshness between recipients and sends; long cycles yield fairly. Oversized messages are paginated; partial sends become uncertain.
+
+After unsubscribing, `/blnt-alerts forget confirm:DELETE` erases current local subscription/history; Discord messages remain. Root-owned rollback backups are retained at most 30 days/10 snapshots by `blnt-alert-retention.timer`; legacy runtime data/secrets/backups retire after 30 days. Orphan receipts and obsolete rule state are pruned. Uncertain delivery evidence remains for review unless the user explicitly erases their data. Independent off-host backups/heartbeat hosting and a full 20-user load exercise remain operational follow-up work.
 
 Continuous operation requires the host and WSL to remain awake. Public-provider uptime and rate limits remain trial dependencies. Oracle references are not execution prices. Available borrowing headroom is a risk-adjusted credit measure, not guaranteed cash or a guarantee that a proposed borrow succeeds. Trading volume/liquidity, arbitrary news and trading execution are outside this project.

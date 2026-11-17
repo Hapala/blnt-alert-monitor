@@ -109,7 +109,7 @@ test('discovery verifies pinned identities and all lending/backstop getters; one
 test('subscription cycle caches fresh discovery, isolates failures and rejects a stale primary snapshot',async()=>{
   const db=setup(),snapshot={observedAt:now,source:'oracle',observations:[],markets:[],issues:[]};let reads=0,sends=0;
   const discover=async()=>{reads++;return discovery;},clock=async()=>({ledgerTime:now}),api={send:async()=>{sends++;return {messageId:'m',channelId:'d'};}};
-  assert.deepEqual(await subscriptionTick(db,api,snapshot,config,registry,discover,clock),{enabled:1,failures:0});
+  const result=await subscriptionTick(db,api,snapshot,config,registry,discover,clock);assert.equal(result.enabled,1);assert.equal(result.failures,0);assert.ok(result.heartbeatAt>=now);
   await subscriptionTick(db,api,snapshot,config,registry,discover,clock);assert.equal(reads,1);assert.equal(sends,1);
   await assert.rejects(subscriptionTick(db,api,{...snapshot,observedAt:now-901},config,registry,discover,clock),/stale/);db.close();
 });

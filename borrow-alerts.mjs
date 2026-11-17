@@ -1,4 +1,4 @@
-import {getState,setState,enqueue,message} from './engine.mjs';
+import {getState,setState,enqueue,message,reconcileAlert} from './engine.mjs';
 import {decimal,formatUnits,S7,PERCENT} from './borrow-math.mjs';
 export function validateRiskRules(rules,registry){
   if(!rules||typeof rules!=='object'||Array.isArray(rules))throw Error('Invalid borrowing rules');
@@ -26,7 +26,7 @@ export function processBorrowing(db,sub,report,selected,config){
     const notify=(kind,category,breach,recovered,title,description)=>{
       if(sub.preferences.mutedCategories.includes(category))return;
       const key=`risk:${sub.id}:${sub.wallet}:${config.mode}:${pool}:${rule.version}:${kind}`;
-      const state=getState(db,key,{armed:true,last:0,sequence:0});
+      const state=reconcileAlert(db,getState(db,key,{armed:true,last:0,sequence:0}));
       if(!breach)for(const row of db.prepare("SELECT id FROM outbox WHERE audience=? AND pool=? AND category=? AND status='pending'").all(sub.id,pool,category))if(row.id.startsWith(key+':'))db.prepare("UPDATE outbox SET status='suppressed' WHERE id=?").run(row.id);
       if(recovered)state.armed=true;
       if(breach&&state.armed&&now-state.last>=3600){
@@ -36,7 +36,9 @@ export function processBorrowing(db,sub,report,selected,config){
         payload.embeds[0].color=category==='capacity'?0xF59E0B:0xEF4444;
         payload.embeds[0].timestamp=new Date(now*1000).toISOString();
         payload.embeds[0].footer={text:'BLNT • Borrowing alerts'};
-        enqueue(db,`${key}:${state.sequence}`,now,payload,config.mode,{audience:sub.id,category,pool});
+        const id=`${key}:${state.sequence}`;
+        enqueue(db,id,now,payload,config.mode,{audience:sub.id,category,pool});
+        state.beforeQueuedLast=state.last;state.pendingId=id;
         state.armed=false;state.last=now;
       }
       setState(db,key,state);

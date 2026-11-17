@@ -10,6 +10,9 @@ import {borrowingStatus} from './borrow-alerts.mjs';
 import {commandDefinition,applyCommand} from './subscription-commands.mjs';
 import {DiscordApi,loadDmToken,loadBotTarget,verifyCommandOrigin} from './dm-api.mjs';
 import {subscriptionTick} from './dm-runtime.mjs';
+import {CommandGate} from './command-gate.mjs';
+import {privateReply} from './discord-format.mjs';
+if(process.argv.includes('--check-install')){console.log('DM entry point imports verified');process.exit(0);}
 const home=resolve(process.env.BLNT_MONITOR_HOME??dirname(fileURLToPath(import.meta.url))),data=resolve(home,'data');
 mkdirSync(data,{recursive:true,mode:0o700});
 const lockPath=resolve(data,'dm-worker.lock');
@@ -19,20 +22,24 @@ try {
   lock=openSync(lockPath,'wx',0o600);writeFileSync(lock,String(process.pid));
 }catch{console.error('DM worker lock exists; inspect the running process before recovery');process.exit(1);}
 const db=openStore(resolve(data,'monitor.sqlite'));db.exec('PRAGMA busy_timeout=5000');initSubscriptions(db);
-const registry=JSON.parse(readFileSync(resolve(home,'markets.json'),'utf8'));
+const registry=JSON.parse(readFileSync(new URL('./markets.json',import.meta.url),'utf8'));
 const botTarget=loadBotTarget(),botToken=loadDmToken();
 const api=new DiscordApi(botToken);
+api.guildId=botTarget.guildId;
+const gate=new CommandGate();
 const client=new Client({intents:[],allowedMentions:{parse:[]}});
 let stopping=false;
-const status=value=>{writeFileSync(resolve(data,'dm-status.json.tmp'),JSON.stringify(value,null,2)+'\n',{mode:0o600});renameSync(resolve(data,'dm-status.json.tmp'),resolve(data,'dm-status.json'));};
+const status=value=>{writeFileSync(resolve(data,'dm-status.json.tmp'),JSON.stringify({releaseId:process.env.BLNT_RELEASE_ID??'development',...value},null,2)+'\n',{mode:0o600});renameSync(resolve(data,'dm-status.json.tmp'),resolve(data,'dm-status.json'));};
 client.on('error',()=>console.error('DM gateway connection error; credential not displayed'));
 client.on('interactionCreate',async interaction=>{
   if(!interaction.isChatInputCommand()||interaction.commandName!=='blnt-alerts')return;
+  let release;
   try {
     await interaction.deferReply({flags:MessageFlags.Ephemeral});
-    await verifyCommandOrigin(api,botTarget.guildId,interaction.user.id,interaction.guildId);
     const name=interaction.options.getSubcommand(),id=interaction.user.id,args={};
-    for(const key of ['wallet','pool','category','amount','scope'])args[key]=interaction.options.getString(key);
+    release=gate.enter(id,name);
+    await verifyCommandOrigin(api,botTarget.guildId,id,interaction.guildId,name);
+    for(const key of ['wallet','pool','category','amount','scope','confirm'])args[key]=interaction.options.getString(key);
     args.minutes=interaction.options.getInteger('minutes');
     args.percent=interaction.options.getNumber('percent');args.apr=interaction.options.getNumber('apr');args.clear=interaction.options.getBoolean('clear');
     const now=Math.floor(interaction.createdTimestamp/1000);
@@ -43,17 +50,17 @@ client.on('interactionCreate',async interaction=>{
       const report=await collectBorrowing(sub,selectedPools(sub,getState(db,`discovery:${id}`,null),snapshot.observedAt),snapshot,registry,c);
       const current=getSubscriber(db,id);if(current.wallet!==sub.wallet||current.revision!==sub.revision)throw Error('Subscription changed; run borrowing again');
       setState(db,`borrowing:${id}`,report);
-      await interaction.editReply({content:borrowingStatus(current,report,registry,report.checkedAt),allowedMentions:{parse:[]}});return;
+      await privateReply(interaction,borrowingStatus(current,report,registry,report.checkedAt));return;
     }
     const result=applyCommand(db,id,name,args,registry,now);
     if(result==='test') {
       await api.send(id,message('[PRIVATE TRIAL] BLNT DM delivery test','This is your requested delivery test. No market threshold is asserted. Your subscription settings are managed with /blnt-alerts.'));
       await interaction.editReply('Your DM delivery test was sent.');
-    }else await interaction.editReply({content:result,allowedMentions:{parse:[]}});
+    }else await privateReply(interaction,result);
   }catch(error){
     const safe=error.status||error.uncertain?'Discord delivery unavailable. Check your DM privacy settings, then try /blnt-alerts resume.':error.message;
     try {if(interaction.deferred||interaction.replied)await interaction.editReply({content:safe,allowedMentions:{parse:[]}});else await interaction.reply({content:safe,flags:MessageFlags.Ephemeral});}catch{}
-  }
+  }finally{release?.();}
 });
 try {
   const me=await api.identity(botTarget.applicationId);
@@ -80,8 +87,8 @@ try {
       if(config.paused||existsSync(resolve(home,'PAUSED')))status({active:true,paused:true});
       else {
         const snapshot=JSON.parse(readFileSync(resolve(data,'latest.json'),'utf8'));
-        const result=await subscriptionTick(db,api,snapshot,config,registry);
-        status({active:true,mode:config.mode,botId:me.id,commandId:command.id,sourceObservedAt:snapshot.observedAt,...result});
+        const result=await subscriptionTick(db,api,snapshot,{...config,guildId:botTarget.guildId},registry);
+        status({active:true,mode:config.mode,heartbeatAt:Math.floor(Date.now()/1000),botId:me.id,commandId:command.id,sourceObservedAt:snapshot.observedAt,...result});
       }
     }catch{status({active:true,ready:false,error:'Subscription cycle failed; review source readiness or bot configuration'});}
     if(process.argv.includes('--once'))break;

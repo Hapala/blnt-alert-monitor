@@ -1,9 +1,11 @@
 import {chromium} from 'playwright-core';
+import {allowedBrowserUrl} from './browser-network.mjs';
 
 const origin='https://blnt.trade';
 const contract=/^C[A-Z2-7]{55}$/;
 async function publicText(url) {
-  const response=await fetch(url,{signal:AbortSignal.timeout(30000)});
+  if(!await allowedBrowserUrl(url))throw Error('Website origin or address denied');
+  const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(30000)});
   if(!response.ok)throw Error(`BLNT website HTTP ${response.status}`);
   return response.text();
 }
@@ -87,10 +89,13 @@ export class WebsiteCollector {
     const startedAt=now();
     try {
     await context.route('**/*',async route=>{
-      const u=new URL(route.request().url());
-      if(['localhost','127.0.0.1','[::1]','0.0.0.0'].includes(u.hostname)||u.protocol==='file:') return route.abort();
+      if(!await allowedBrowserUrl(route.request().url())){
+        if(process.env.BLNT_NETWORK_AUDIT==='true')console.warn(JSON.stringify({deniedHost:new URL(route.request().url()).hostname}));
+        return route.abort();
+      }
       return route.continue();
     });
+    await context.routeWebSocket('**/*',socket=>socket.close());
     const page=await context.newPage();
       // Read the UI's public configured V3 registry. No tab-selection, wallet or
       // consent clicks are needed; each price still comes from rendered UI text.

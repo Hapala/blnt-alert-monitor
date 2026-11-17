@@ -2,7 +2,7 @@
 
 Implemented November 15, 2026. **All new rules default off. Michael explicitly chose to leave them off until selecting thresholds.** Existing price alerts, subscriptions, mutes and the private shared channel continue independently.
 
-In your DM with Openclaw Coder, select the pool choice in Discord's command picker:
+In your DM with **BLNT Alerts**, select the pool choice in Discord's command picker:
 
 ```
 /blnt-alerts capacity pool:<Fixed V3> percent:20 amount:100

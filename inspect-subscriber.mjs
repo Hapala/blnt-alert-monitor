@@ -6,7 +6,7 @@ const home=process.env.BLNT_MONITOR_HOME??process.cwd(),db=openStore(resolve(hom
 initSubscriptions(db);
 try {
   const id=process.argv[2],sub=getSubscriber(db,id),discovery=getState(db,`discovery:${id}`,null);
-  const registry=JSON.parse(readFileSync(resolve(home,'markets.json')));
+  const registry=JSON.parse(readFileSync(new URL('./markets.json',import.meta.url)));
   console.log(JSON.stringify({enabled:Boolean(sub?.enabled),preferences:sub?.preferences,
     pools:discovery?Object.entries(discovery.pools).map(([pool,p])=>({pool:registry.pools.find(v=>v.id===pool)?.name,...p})):null,
     checkedAt:discovery?.checkedAt,delivery:getState(db,`dm-delivery:${id}`,{}),

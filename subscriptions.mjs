@@ -9,6 +9,9 @@ export const BACKSTOP_HASH='0469cfb445bedd87478274f265c8776b32cde1e8840fca4684ff
 export function initSubscriptions(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS subscribers (id TEXT PRIMARY KEY, wallet TEXT NOT NULL, preferences TEXT NOT NULL, enabled INTEGER NOT NULL, consentAt INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS dm_receipts (outboxId TEXT PRIMARY KEY, messageId TEXT, channelId TEXT);`);
+  const columns=new Set(db.prepare('PRAGMA table_info(dm_receipts)').all().map(c=>c.name));
+  if(!columns.has('botId'))db.exec('ALTER TABLE dm_receipts ADD COLUMN botId TEXT');
+  if(!columns.has('sentAt'))db.exec('ALTER TABLE dm_receipts ADD COLUMN sentAt INTEGER');
 }
 export const defaults=()=>({extraPools:[],mutedPools:[],mutedCategories:[],paused:false,snoozeUntil:0,riskRules:{}});
 export function validWallet(wallet){return StrKey.isValidEd25519PublicKey(wallet)||StrKey.isValidContract(wallet);}
@@ -37,7 +40,15 @@ export function updatePreferences(db,id,change,registry) {
   if(prefs.mutedCategories.some(c=>!CATEGORIES.includes(c)))throw Error('Unknown notification category');
   validateRiskRules(prefs.riskRules,registry);
   db.prepare('UPDATE subscribers SET preferences=?,revision=revision+1 WHERE id=?').run(JSON.stringify(prefs),id);
-  suppressAll(db,id);return getSubscriber(db,id);
+  // An unrelated category edit must not discard a still-eligible warning.
+  const changed=getSubscriber(db,id);
+  const selectionChanged=JSON.stringify(prefs.extraPools)!==JSON.stringify(sub.preferences.extraPools)||JSON.stringify(prefs.mutedPools)!==JSON.stringify(sub.preferences.mutedPools);
+  for(const row of db.prepare("SELECT id,pool,category FROM outbox WHERE audience=? AND status='pending'").all(id))
+    if(prefs.paused||prefs.snoozeUntil>sub.preferences.snoozeUntil||prefs.mutedCategories.includes(row.category)||(row.pool&&prefs.mutedPools.includes(row.pool))||(selectionChanged&&!row.pool))
+      db.prepare("UPDATE outbox SET status='suppressed' WHERE id=?").run(row.id);
+  for(const pool of registry.pools)if(JSON.stringify(sub.preferences.riskRules?.[pool.id])!==JSON.stringify(prefs.riskRules?.[pool.id]))
+    db.prepare("UPDATE outbox SET status='suppressed' WHERE audience=? AND pool=? AND category IN ('capacity','borrow_rate') AND status='pending'").run(id,pool.id);
+  return changed;
 }
 export function disableSubscriber(db,id) {db.prepare('UPDATE subscribers SET enabled=0 WHERE id=?').run(id);suppressAll(db,id);}
 function amount(value){if(typeof value!=='bigint'||value<0n)throw Error('Invalid position amount');return value;}
@@ -94,7 +105,7 @@ export function suppressUnwanted(db,sub,pools,now) {
   const previous=getState(db,key,null);
   // A pending digest may contain multiple pools. Cancel it when membership
   // changes rather than delivering content selected under an older preference.
-  if(previous&&JSON.stringify(previous)!==JSON.stringify(selection))suppressAll(db,sub.id);
+  if(previous&&JSON.stringify(previous)!==JSON.stringify(selection))db.prepare("UPDATE outbox SET status='suppressed' WHERE audience=? AND pool IS NULL AND status='pending'").run(sub.id);
   setState(db,key,selection);
   const selected=new Set(pools);
   for(const row of db.prepare("SELECT id,pool,category FROM outbox WHERE audience=? AND status='pending'").all(sub.id)) {

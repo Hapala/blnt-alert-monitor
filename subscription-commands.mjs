@@ -1,6 +1,7 @@
 import {defaults,saveSubscriber,getSubscriber,updatePreferences,disableSubscriber,CATEGORIES} from './subscriptions.mjs';
 import {getState,setState} from './engine.mjs';
 import {borrowingStatus} from './borrow-alerts.mjs';
+import {forgetSubscriber} from './retention.mjs';
 const text=(name,description,required=false,choices)=>({type:3,name,description,required,...(choices?{choices}: {})});
 export function commandDefinition(registry) {
   const pools=registry.pools.map(p=>({name:p.name,value:p.id}));
@@ -14,7 +15,7 @@ export function commandDefinition(registry) {
     sub('mute','Mute a category or a pool',muteOptions),sub('unmute','Unmute a category or a pool',muteOptions),
     sub('pause','Pause all personal alerts'),sub('resume','Resume personal alerts'),
     sub('snooze','Temporarily pause personal alerts',[{type:4,name:'minutes',description:'Minutes to pause',required:true,min_value:1,max_value:10080}]),
-    sub('unsubscribe','Stop personal notifications'),sub('test','Send a private delivery test'),
+    sub('unsubscribe','Stop personal notifications'),sub('forget','Delete your stopped subscription and local history',[text('confirm','Choose DELETE after unsubscribing',true,[{name:'DELETE my stopped subscription data',value:'DELETE'}])]),sub('test','Send a private delivery test'),
     sub('borrowing','Show your borrowing data and configured thresholds'),
     sub('capacity','Set low remaining borrowing-capacity thresholds for one pool',[
       text('pool','Pool and quote currency',true,pools),
@@ -29,6 +30,7 @@ export function commandDefinition(registry) {
   ]};
 }
 export function applyCommand(db,id,name,args,registry,now) {
+  if(name==='forget')return forgetSubscriber(db,id,args.confirm);
   const current=getSubscriber(db,id);
   if(name==='subscribe') {
     saveSubscriber(db,id,args.wallet,now);setState(db,`dm-delivery:${id}`,{blocked:false});

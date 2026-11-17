@@ -25,8 +25,20 @@ export function setState(db, key, value) {
   db.prepare('INSERT OR REPLACE INTO state VALUES (?,?)').run(key, JSON.stringify(value));
 }
 export function enqueue(db, id, now, payload, mode, routing={}) {
-  db.prepare('INSERT OR IGNORE INTO outbox(id,created,status,payload,audience,category,pool) VALUES (?,?,?,?,?,?,?)')
+  db.prepare(`INSERT INTO outbox(id,created,status,payload,audience,category,pool) VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET created=excluded.created,status=excluded.status,payload=excluded.payload
+    WHERE outbox.status IN ('suppressed','expired') AND outbox.attempts<4`)
     .run(id, now, mode === 'live' ? 'pending' : 'preview', JSON.stringify(payload),routing.audience??'shared',routing.category??'uncategorized',routing.pool??null);
+}
+// Only definitely unsent cancellations may re-arm a condition. Never replay an
+// uncertain/in-flight/accepted delivery, even after preferences change.
+export function reconcileAlert(db,state){
+  if(state.pendingId){
+    const row=db.prepare('SELECT status FROM outbox WHERE id=?').get(state.pendingId);
+    if(row&&['suppressed','expired'].includes(row.status)){state.armed=true;state.last=state.beforeQueuedLast??0;delete state.pendingId;}
+    else if(row?.status==='sent')delete state.pendingId;
+  }
+  return state;
 }
 export function message(title, description, fields = []) {
   return {username: 'BLNT Alerts', allowed_mentions: {parse: []}, embeds: [{title, description, fields, color: 3447003}]};
@@ -87,7 +99,7 @@ export function processSnapshot(db, snapshot, c) {
       const change = (o.price / baseline.price - 1) * 100;
       for (const direction of ['up', 'down']) {
         const stateKey = `${scope}${c.mode}:alert:${o.key}:${direction}`;
-        const state = getState(db, stateKey, {armed: true, last: 0});
+        const state = reconcileAlert(db,getState(db, stateKey, {armed: true, last: 0}));
         const signed = direction === 'up' ? change : -change;
         const exact=Boolean(o.priceRaw&&baseline.priceRaw);
         const rearm=exact?!reachesThreshold(o.priceRaw,baseline.priceRaw,c.rearmPercent,direction):signed<c.rearmPercent;
@@ -103,7 +115,9 @@ export function processSnapshot(db, snapshot, c) {
               {name: 'Source', value: o.sourceUrl},
             ]);
           Object.assign(payload.embeds[0],{color:direction==='up'?0x22C55E:0xEF4444,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'BLNT • Price movement • Green = rise; red = fall'}});
-          queue(`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`,payload,'price',o.pool);
+          const id=`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`;
+          queue(id,payload,'price',o.pool);
+          state.beforeQueuedLast=state.last;state.pendingId=scope+id;
           state.armed = false; state.last = now;
         }
         setState(db, stateKey, state);

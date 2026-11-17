@@ -1,3 +1,4 @@
+import {discordPayloads} from './discord-format.mjs';
 export function validateWebhook(url) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:' || parsed.hostname !== 'discord.com' || parsed.port || parsed.username || parsed.password || parsed.hash || parsed.search ||
@@ -26,16 +27,21 @@ export async function deliver(db, secret, now, fetcher = fetch, audience='shared
   const rows = db.prepare("SELECT * FROM outbox WHERE status='pending' AND next<=? AND audience=? ORDER BY created LIMIT 5").all(now,audience);
   for (const row of rows) {
     db.prepare("UPDATE outbox SET status='sending', attempts=attempts+1 WHERE id=?").run(row.id);
-    let response;
+    let response,accepted=0;
     try {
-      response = await fetcher(url, {method:'POST', redirect:'error', signal:AbortSignal.timeout(15000),
-        headers:{'Content-Type':'application/json'}, body:row.payload});
+      for(const part of discordPayloads(JSON.parse(row.payload))){
+        response = await fetcher(url, {method:'POST', redirect:'error', signal:AbortSignal.timeout(15000),
+          headers:{'Content-Type':'application/json'}, body:JSON.stringify(part)});
+        if(!response.ok)break;accepted++;
+      }
     } catch {
       db.prepare("UPDATE outbox SET status='uncertain' WHERE id=?").run(row.id);
       break;
     }
     if (response.ok) {
       db.prepare("UPDATE outbox SET status='sent' WHERE id=?").run(row.id);
+    } else if(accepted){
+      db.prepare("UPDATE outbox SET status='uncertain' WHERE id=?").run(row.id);break;
     } else if (response.status === 429) {
       let retry = 60;
       try { retry = Math.min(3600,Math.max(1,Number((await response.json()).retry_after)||60)); } catch {}

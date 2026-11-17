@@ -10,7 +10,9 @@ Copy `discord-bot.example.json` to the runtime `discord-bot.json`, pin the new a
 
 Commands are accepted only in the pinned server or in DMs from a verified member of that server. Other servers and nonmember DMs are rejected before subscription changes. This check also applies if someone installs the application elsewhere.
 
-The systemd DM worker runs with no privileged intents, no message-content listener, a read-only filesystem except its data directory, a private user namespace and explicit denial of OpenClaw, SSH and AWS directories and the shared webhook credential. A startup check fails if the worker can read personal OpenClaw configuration. There are no AI or arbitrary command-execution handlers. The shared collector stays separate because it requires its isolated website browser.
+Both system services run as the dedicated `blnt-alerts` OS account with no login shell or capabilities. They have read-only filesystems except their private data directory, private temporary/device views, hidden personal home directories/Windows mounts, and visibility restricted to their own processes. Startup fails if personal OpenClaw configuration is readable. The DM worker masks the shared webhook; the shared worker masks the bot token. No privileged Discord intents, message-content listeners, AI or arbitrary execution handlers are present. The website browser permits only verified public HTTPS origins used by the cross-check; WebSockets and unrelated wallet integrations are blocked.
+
+Immutable releases live under `/opt/blnt-alert-monitor/releases`; runtime config/data/credentials live under `/var/lib/blnt-alert-monitor`. `deploy-isolated.py --prepare <source>` tests without stopping workers; `--activate` switches to the tested release with failure recovery. See README.md for current system-service and retention commands.
 
 ## Migration sequence
 

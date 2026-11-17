@@ -1,6 +1,7 @@
 import {readFileSync,lstatSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {discordPayloads} from './discord-format.mjs';
 
 const monitorHome=()=>resolve(process.env.BLNT_MONITOR_HOME??dirname(fileURLToPath(import.meta.url)));
 export const PERSONAL_BOT_ID='1477387518939893871';
@@ -18,16 +19,25 @@ export function loadBotTarget(path=resolve(monitorHome(),'discord-bot.json')){
   if(target.purpose!=='blnt-alerts-only'||!/^\d{15,22}$/.test(target.applicationId??'')||target.applicationId===PERSONAL_BOT_ID||!/^\d{15,22}$/.test(target.guildId??''))throw Error('Dedicated BLNT bot identity must be pinned');
   return target;
 }
-export async function verifyCommandOrigin(api,guildId,userId,interactionGuildId){
+export async function verifyCommandOrigin(api,guildId,userId,interactionGuildId,action){
   if(!/^\d{15,22}$/.test(userId))throw Error('Invalid Discord caller');
   if(interactionGuildId){if(interactionGuildId!==guildId)throw Error('BLNT Alerts is available only in its configured BLNT server and member DMs');return;}
+  if(['unsubscribe','forget'].includes(action))return; // Former members retain stop/erase controls for their own records.
   let member;
   try{member=await api.request('GET',`/guilds/${guildId}/members/${userId}`);}
   catch(error){if(error.status===403||error.status===404)throw Error('Join the configured BLNT server before using personal alerts');throw Error('Server membership check unavailable; please try again later');}
   if(member.user?.id!==userId)throw Error('Discord caller membership could not be verified');
 }
 export class DiscordApi {
-  constructor(token,fetcher=fetch){this.token=token;this.fetcher=fetcher;}
+  constructor(token,fetcher=fetch){this.token=token;this.fetcher=fetcher;this.members=new Map();}
+  async verifyMembership(userId){
+    if(!this.guildId)throw Error('Pinned guild required for scheduled membership checks');
+    const now=performance.now(),previous=this.members.get(userId);
+    if(previous&&now-previous<60000)return;
+    const member=await this.request('GET',`/guilds/${this.guildId}/members/${userId}`);
+    if(member.user?.id!==userId)throw Error('Discord membership could not be verified');
+    this.members.set(userId,now);
+  }
   async request(method,path,body) {
     let response;
     try {response=await this.fetcher('https://discord.com/api/v10'+path,{method,redirect:'error',signal:AbortSignal.timeout(15000),
@@ -45,10 +55,13 @@ export class DiscordApi {
     return channel.id;
   }
   async send(userId,payload) {
+    if(this.guildId)await this.verifyMembership(userId);
     const channelId=await this.dmChannel(userId);
-    const {username,...message}=payload;
-    const sent=await this.request('POST',`/channels/${channelId}/messages`,{...message,allowed_mentions:{parse:[]}});
-    if(sent.channel_id!==channelId||!sent.id)throw Error('DM receipt verification failed');
-    return {channelId,messageId:sent.id};
+    const {username,...message}=payload;let sent,accepted=0;
+    try{for(const part of discordPayloads(message)){
+      sent=await this.request('POST',`/channels/${channelId}/messages`,part);accepted++;
+      if(sent.channel_id!==channelId||!sent.id){const error=Error('DM receipt verification failed');error.uncertain=true;throw error;}
+    }}catch(error){if(accepted)error.uncertain=true;throw error;}
+    return {channelId,messageId:sent.id,botId:this.botId};
   }
 }
