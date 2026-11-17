@@ -1,6 +1,6 @@
 # Personal Discord DM subscriptions
 
-The user chose DMs for personal alerts on November 15, 2026. Shared updates continue through the existing private #price-alerts webhook. Personal queues are recipient-scoped and cannot be consumed by that webhook. No per-subscriber channels are created.
+The user chose DMs for personal alerts on November 15, 2026. Shared updates continue through the existing #price-alerts webhook; the latest request makes that channel visible to BLNT Trade members. Legacy visibility-label/configuration alignment is tracked in SYSTEM_SPEC.md. Personal queues are recipient-scoped and cannot be consumed by the webhook. No per-subscriber channels are created.
 
 The dedicated BLNT Alerts bot delivers personal messages and owns /blnt-alerts. It uses its own private token file and pinned application identity, with no OpenClaw credential fallback. The service is denied access to personal OpenClaw files and listens only for slash-command interactions, with no privileged intents or message-content access. See DEDICATED_BOT.md for installation, isolation and migration details.
 

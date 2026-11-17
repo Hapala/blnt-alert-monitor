@@ -1,6 +1,6 @@
 # Dedicated BLNT Alerts Discord application
 
-The user authorized moving alert commands and personal messages to a separate **BLNT Alerts** bot on November 15, 2026. The personal OpenClaw bot remains private. The shared private-channel webhook already has the BLNT Alerts identity and remains the shared-update transport.
+The user authorized moving alert commands and personal messages to a separate **BLNT Alerts** bot on November 15, 2026. The personal OpenClaw bot remains private. The shared-channel webhook uses the BLNT Alerts identity and remains the shared-update transport. The subsequent request for a server-visible shared channel supersedes the initial private-channel policy; current implementation gaps are recorded in SYSTEM_SPEC.md.
 
 ## Identity and permissions
 
@@ -8,7 +8,7 @@ Create a separate Discord developer application named BLNT Alerts, install it in
 
 Copy `discord-bot.example.json` to the runtime `discord-bot.json`, pin the new application ID and guild ID, and store only the new bot token in runtime `secrets/discord_bot_token` (directory 0700, file 0600). Host-specific identity files and all secrets are ignored by Git. The loader rejects missing/insecure/symlinked token files and never reads OpenClaw configuration. The personal OpenClaw bot ID is explicitly rejected; the worker also verifies its actual application ID and membership in the pinned BLNT server before registering commands or sending notifications.
 
-Commands are accepted only in the pinned server or in DMs from a verified member of that server. Other servers and nonmember DMs are rejected before subscription changes. This check also applies if someone installs the application elsewhere.
+Commands are accepted only in the pinned server or in DMs from a verified member of that server. Other servers and nonmember DMs are rejected before subscription changes, except that former members retain unsubscribe and confirmed local-data deletion controls in DMs. This check also applies if someone installs the application elsewhere.
 
 Both system services run as the dedicated `blnt-alerts` OS account with no login shell or capabilities. They have read-only filesystems except their private data directory, private temporary/device views, hidden personal home directories/Windows mounts, and visibility restricted to their own processes. Startup fails if personal OpenClaw configuration is readable. The DM worker masks the shared webhook; the shared worker masks the bot token. No privileged Discord intents, message-content listeners, AI or arbitrary execution handlers are present. The website browser permits only verified public HTTPS origins used by the cross-check; WebSockets and unrelated wallet integrations are blocked.
 
@@ -24,4 +24,4 @@ Immutable releases live under `/opt/blnt-alert-monitor/releases`; runtime config
 6. Verify personal OpenClaw's Discord DM and guild sender policies restrict the default personal account to the owner. Other configured bot accounts remain unchanged. Treat stored pairing approvals as part of the effective access list.
 7. Verify the new bot exposes only alert commands, is never loaded into OpenClaw, and its process cannot read personal OpenClaw files. Record identity and delivery evidence without printing credentials.
 
-Shared channel privacy and membership remain unchanged. The pinned generic command guide remains valid because it references `/blnt-alerts` rather than the former personal bot. Keep the trial labels and opt-in requirements; do not make shared updates public.
+The user's later channel-visibility decision supersedes the original private shared-channel trial. Preserve opt-in DMs and personal data privacy while aligning shared-channel labels/configuration with that decision. Update the pinned command guide when commands or requirements change. See SYSTEM_SPEC.md for accepted requirements and outstanding alignment work.
