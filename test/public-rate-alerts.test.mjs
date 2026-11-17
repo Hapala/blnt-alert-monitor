@@ -43,3 +43,26 @@ test('public scheduling is bounded and public rules never run for personal audie
  processPublicRateAlerts(db,snapshot(),{...config,publicBorrowRates:{enabled:false}});assert.equal(rows(db).length,0);
  assert.throws(()=>publicRateSettings({...config,publicBorrowRates:{...config.publicBorrowRates,pollSeconds:60}}));db.close();
 });
+test('rate changes are percentage points, accumulate from baseline, use colour/direction and respect cooldown',()=>{
+ const db=openStore(':memory:');processPublicRateAlerts(db,snapshot(now,'500000'),config);
+ processPublicRateAlerts(db,snapshot(now+300,'599999'),config);assert.equal(rows(db).length,0);
+ processPublicRateAlerts(db,snapshot(now+600,'600000'),config);assert.equal(rows(db).length,1);
+ let embed=JSON.parse(rows(db)[0].payload).embeds[0];assert.match(embed.description,/5% → 6% APR/);assert.match(embed.description,/1 percentage point/);assert.equal(embed.color,0xF59E0B);
+ db.prepare("UPDATE outbox SET status='sent'").run();
+ for(let t=now+900;t<now+4200;t+=300)processPublicRateAlerts(db,snapshot(t,'400000'),config);
+ assert.equal(rows(db).length,1);processPublicRateAlerts(db,snapshot(now+4200,'400000'),config);assert.equal(rows(db).length,2);
+ embed=JSON.parse(rows(db)[1].payload).embeds[0];assert.match(embed.description,/6% → 4%/);assert.equal(embed.color,0x22C55E);assert.ok(embed.description.length<150);db.close();
+});
+test('a 15-minute gap resets movement baseline; cancelled movements rearm and uncertain ones do not replay',()=>{
+ const db=openStore(':memory:');processPublicRateAlerts(db,snapshot(now,'500000'),config);
+ processPublicRateAlerts(db,snapshot(now+901,'700000'),config);assert.equal(rows(db).length,0);
+ processPublicRateAlerts(db,snapshot(now+1200,'800000'),config);assert.equal(rows(db).length,1);
+ const bad=snapshot(now+1260);bad.borrowRates.pools=[];processPublicRateAlerts(db,bad,config);assert.equal(rows(db)[0].status,'suppressed');
+ processPublicRateAlerts(db,snapshot(now+1500,'800000'),config);assert.equal(rows(db)[0].status,'pending');
+ db.prepare("UPDATE outbox SET status='uncertain'").run();processPublicRateAlerts(db,snapshot(now+1800,'800000'),config);assert.equal(rows(db).length,1);db.close();
+});
+test('a high-rate episode replaces a simultaneous movement notice',()=>{
+ const db=openStore(':memory:');processPublicRateAlerts(db,snapshot(now,'800000'),config);
+ processPublicRateAlerts(db,snapshot(now+300,'1100000'),config);
+ assert.equal(rows(db).length,1);assert.match(rows(db)[0].payload,/Borrow rate high/);db.close();
+});

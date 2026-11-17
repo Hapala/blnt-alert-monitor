@@ -1,5 +1,5 @@
 import {getState,setState,enqueue,message,reconcileAlert} from './engine.mjs';
-import {decimal,PERCENT,S7} from './borrow-math.mjs';
+import {decimal,PERCENT,S7,formatUnits} from './borrow-math.mjs';
 
 export function publicRateSettings(config){
   const rules=config.publicBorrowRates;
@@ -7,7 +7,40 @@ export function publicRateSettings(config){
   const high=decimal(String(rules.highApr)),recovery=decimal(String(rules.recoveryApr));
   if(high<=recovery||high>100000n*PERCENT||!Number.isInteger(rules.pollSeconds)||rules.pollSeconds<300||
     !Number.isInteger(rules.cooldownSeconds)||rules.cooldownSeconds<3600)throw Error('Invalid public borrow-rate rules');
-  return {...rules,high,recovery};
+  const movement=decimal(String(rules.changeAprPoints??'1')),changeCooldownSeconds=rules.changeCooldownSeconds??3600;
+  if(movement<=0n||!Number.isInteger(changeCooldownSeconds)||changeCooldownSeconds<3600)throw Error('Invalid public rate-change rules');
+  return {...rules,high,recovery,movement,changeCooldownSeconds};
+}
+function rateMovement(db,state,key,rate,pool,report,now,rules,config){
+  const raw=BigInt(rate.aprRaw);
+  if(state.changeId){
+    const row=db.prepare('SELECT status,created,attempts FROM outbox WHERE id=?').get(state.changeId);
+    if(row&&['sent','uncertain','sending','failed'].includes(row.status)){
+      state.baselineRaw=state.changeRaw;state.lastChange=row.created;delete state.changeId;
+    }
+  }
+  if(state.baselineRaw==null||now-(state.lastSeen??now)>900){
+    if(state.changeId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.changeId);
+    state.baselineRaw=rate.aprRaw;delete state.changeId;
+  }
+  state.lastSeen=now;
+  const episodePending=[state.highId,state.recoveryId].filter(Boolean).some(id=>['pending','sending'].includes(db.prepare('SELECT status FROM outbox WHERE id=?').get(id)?.status));
+  const delta=raw-BigInt(state.baselineRaw),absolute=delta<0n?-delta:delta;
+  const qualifies=absolute*100n*PERCENT>=rules.movement*S7;
+  if(state.changeId){
+    const row=db.prepare('SELECT status,attempts FROM outbox WHERE id=?').get(state.changeId);
+    const previousDelta=BigInt(state.changeRaw)-BigInt(state.baselineRaw);
+    if(!qualifies||episodePending||(previousDelta<0n)!==(delta<0n))db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.changeId);
+    else if(row?.status==='pending')return;
+    if(row?.attempts>=4)return;
+  }
+  if(!qualifies||episodePending||now-(state.lastChange??0)<rules.changeCooldownSeconds)return;
+  const rising=delta>0n,payload=message(`Borrow APR ${rising?'↑':'↓'} · ${rate.symbol}`,
+    `**${pool.name}**\n**${formatUnits(BigInt(state.baselineRaw)*100n,7)}% → ${rate.aprPercent}% APR**\n**${rising?'+':'−'}${formatUnits(absolute*100n,7)} percentage point${absolute===100000n?'':'s'}**`);
+  Object.assign(payload.embeds[0],{color:rising?0xF59E0B:0x22C55E,timestamp:new Date(report.checkedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'Variable borrow APR · Change since last rate update'}});
+  if(!state.changeId){state.changeSequence=(state.changeSequence??0)+1;state.changeId=`${key}:change:${state.changeSequence}`;}
+  state.changeRaw=rate.aprRaw;
+  enqueue(db,state.changeId,now,payload,config.mode,{audience:'shared',category:'borrow_rate',pool:pool.id});
 }
 export function publicRatesDue(db,now,config){
   const rules=publicRateSettings(config);if(!rules)return false;
@@ -42,6 +75,11 @@ export function processPublicRateAlerts(db,snapshot,config){
           Object.assign(payload.embeds[0],{color,timestamp:new Date(report.checkedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'Variable annual borrow rate · Public pool data'}});
           const id=`${key}:${kind}:${state.sequence}`;
           enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'borrow_rate',pool:pool.id});
+          const row=db.prepare('SELECT status,created FROM outbox WHERE id=?').get(id);
+          if(row.created===now&&['pending','preview'].includes(row.status)){
+            if(state.changeId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.changeId);
+            delete state.changeId;state.baselineRaw=rate.aprRaw;state.lastChange=now;
+          }
           return id;
         };
         if(!high&&state.highId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.highId);
@@ -58,6 +96,7 @@ export function processPublicRateAlerts(db,snapshot,config){
           state.highId=queue('high',`Borrow rate high · ${rate.symbol}`,`**${pool.name}** · **${rate.aprPercent}% APR**\nPublic alert: ${rules.highApr}% or higher.`,0xF59E0B);
           state.beforeQueuedLast=state.last;state.pendingId=state.highId;state.last=now;state.armed=false;
         }
+        rateMovement(db,state,key,rate,pool,report,now,rules,config);
         setState(db,key,state);
       }
     }

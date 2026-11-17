@@ -16,7 +16,9 @@
     "highApr": "10",
     "recoveryApr": "9",
     "pollSeconds": 300,
-    "cooldownSeconds": 21600
+    "cooldownSeconds": 21600,
+    "changeAprPoints": "1",
+    "changeCooldownSeconds": 3600
   },
   "maxCaptureAgeSeconds": 600,
   "maxOracleAgeSeconds": 900,
