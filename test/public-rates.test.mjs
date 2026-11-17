@@ -23,8 +23,19 @@ test('daily APR fields respect selected pools, disclose missing rates and never 
  let payload=dailyStatusMessage(snapshot,config);assert.match(JSON.stringify(payload),/12.3456789% APR/);assert.doesNotMatch(JSON.stringify(payload),/UNSELECTED/);assert.match(payload.embeds[0].description,/not APY/);
  snapshot.borrowRates.checkedAt=now-181;payload=dailyStatusMessage(snapshot,config);assert.match(JSON.stringify(payload),/Unavailable/);assert.doesNotMatch(JSON.stringify(payload),/12.3456789|0% APR/);
  const observations=[{pool:pool.id,poolName:pool.name,symbol:'TEST',priceExact:'1',quote:'USD'}];
- const before={...snapshot,observations,observedAt:Date.parse('2026-11-16T08:59:00Z')/1000},after={...before,observedAt:Date.parse('2026-11-16T09:00:00Z')/1000},schedule={...config,digestTimezone:'UTC'};
+ const before={...snapshot,observations,observedAt:Date.parse('2026-11-16T08:59:00Z')/1000},after={...before,observedAt:Date.parse('2026-11-16T09:00:00Z')/1000},schedule={...config,sharedDigestEnabled:true,digestTimezone:'UTC'};
  assert.equal(dailyDigestSlot(before,schedule).due,false);assert.equal(dailyDigestSlot(after,schedule).due,true);assert.match(dailyDigestSlot(after,schedule).key,/2026-11-16$/);
+});
+test('shared daily report is disabled and pending shared digests are suppressed without changing personal delivery',async()=>{
+ const {openStore,processSnapshot,enqueue,message}=await import('../engine.mjs');
+ const db=openStore(':memory:');enqueue(db,'shared-digest',now,message('old report','queued'),'live',{audience:'shared',category:'digest'});
+ enqueue(db,'personal-digest',now,message('personal','queued'),'live',{audience:'synthetic',category:'digest'});
+ const snapshot={observedAt:now,source:'oracle',observations:[{symbol:'TEST',pool:pool.id,poolName:pool.name,price:1,quote:'USD',key:'test',timestamp:now}],markets:[],issues:[]};
+ processSnapshot(db,snapshot,{...config,mode:'live'});
+ assert.equal(dailyDigestSlot(snapshot,config).due,false);
+ assert.equal(db.prepare("SELECT status FROM outbox WHERE id='shared-digest'").get().status,'suppressed');
+ assert.equal(db.prepare("SELECT status FROM outbox WHERE id='personal-digest'").get().status,'pending');
+ assert.equal(dailyDigestSlot(snapshot,{...config,audienceId:'synthetic',digestHour:0}).due,true);db.close();
 });
 test('borrowing responses separate disabled thresholds from configured rules and effective mute controls',()=>{
  const sub={enabled:1,wallet:'synthetic',preferences:{riskRules:{},paused:false,snoozeUntil:0,mutedPools:[],mutedCategories:[]}};

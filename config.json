@@ -2,6 +2,7 @@
   "mode": "dry-run",
   "trial": true,
   "paused": false,
+  "sharedDigestEnabled": false,
   "source": "pool-oracles-public-rpc-v1",
   "publicRpcProviders": ["https://mainnet.sorobanrpc.com", "https://soroban-rpc.mainnet.stellar.gateway.fm", "https://rpc.lightsail.network/"],
   "pollSeconds": 60,

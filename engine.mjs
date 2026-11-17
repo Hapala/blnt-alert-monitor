@@ -45,7 +45,8 @@ export function message(title, description, fields = []) {
 }
 export function dailyDigestSlot(snapshot,c){
   const local=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:c.digestTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date(snapshot.observedAt*1000)).map(p=>[p.type,p.value]));
-  return {due:Number(local.hour)>=c.digestHour&&snapshot.observations.length>0,key:`${snapshot.source??'website'}:${c.mode}:digest:${local.year}-${local.month}-${local.day}`};
+  const enabled=c.audienceId&&c.audienceId!=='shared'||c.sharedDigestEnabled!==false;
+  return {due:Boolean(enabled)&&Number(local.hour)>=c.digestHour&&snapshot.observations.length>0,key:`${snapshot.source??'website'}:${c.mode}:digest:${local.year}-${local.month}-${local.day}`};
 }
 export function priceAlertSettings(c,audience='shared'){
   const rules=audience==='shared'?c.publicPriceAlerts:null;
@@ -93,6 +94,7 @@ export function processSnapshot(db, snapshot, c) {
   const queue=(id,payload,category,pool=null)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool});};
   db.exec('BEGIN IMMEDIATE');
   try {
+    if(audience==='shared'&&c.sharedDigestEnabled===false)db.prepare("UPDATE outbox SET status='suppressed' WHERE audience='shared' AND category='digest' AND status='pending'").run();
     if(audience==='shared')db.prepare('INSERT OR REPLACE INTO runs VALUES (?,?)').run(now, JSON.stringify(snapshot));
     for (const o of snapshot.observations) {
       if(o.timestamp>now+15||now-o.timestamp>(o.priceRaw?c.maxOracleAgeSeconds:c.maxCaptureAgeSeconds))continue;

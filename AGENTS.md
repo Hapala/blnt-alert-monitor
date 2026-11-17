@@ -23,6 +23,7 @@ Do not create additional agents or a separate chat unless the user or applicable
 - Ask the user to review meaningful requirement changes, especially data sources, access, privacy, alert meaning/thresholds, recipients, retention and live activation. Do not repeatedly ask for approval for work already authorized within those boundaries.
 - Guidance is not automatic implementation permission. Sample commands or numbers are never permission to activate personal rules.
 - Write alerts in plain, concise language: lead with the asset/pool and the value that changed, then the trigger or comparison. Use bold figures and a short footer for qualifications; avoid filler, repeated disclaimers and internal diagnostics. Public rules never enable personal thresholds.
+- Keep the shared channel focused on meaningful changes. Scheduled shared daily reports are disabled; do not re-enable them without a new request. Rate changes are percentage points of borrow APR, not supply APY; price moves are oracle prices, not market capitalization.
 - Review the spec itself during each relevant changeset. Existing dates, success claims and operational snapshots are evidence, not guarantees that the live state remains unchanged.
 
 ## Security and scope boundaries
