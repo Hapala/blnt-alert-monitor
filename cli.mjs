@@ -5,7 +5,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {WebsiteCollector} from './collector.mjs';
 import {OracleCollector,SOURCE} from './oracle-collector.mjs';
 import {compareWebsite,applyCrossCheck} from './cross-check.mjs';
-import {openStore, getState, setState,dailyDigestSlot} from './engine.mjs';
+import {openStore, getState, setState,dailyDigestSlot,priceAlertSettings} from './engine.mjs';
 import {collectPublicRates} from './borrow-collector.mjs';
 import {publicRateSettings,publicRatesDue,processPublicRateAlerts} from './public-rate-alerts.mjs';
 import {deliver,verifyWebhookTarget} from './webhook.mjs';
@@ -46,6 +46,7 @@ function config() {
   if (c.pollSeconds<30 || c.rearmPercent>=c.thresholdPercent || c.windowSeconds!==3600 || c.digestHour<0 || c.digestHour>23) throw Error('Invalid monitoring configuration');
   if (c.mode==='live' && process.env.BLNT_PUBLISH_APPROVED!=='true') throw Error('Live publishing requires explicit activation');
   publicRateSettings(c);
+  priceAlertSettings(c);
   return c;
 }
 try {

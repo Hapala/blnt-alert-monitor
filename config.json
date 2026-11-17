@@ -11,6 +11,14 @@
   "thresholdPercent": 5,
   "rearmPercent": 3,
   "cooldownSeconds": 3600,
+  "publicPriceAlerts": {
+    "thresholdPercent": 2,
+    "rearmPercent": 1,
+    "cooldownSeconds": 10800,
+    "largePercent": 5,
+    "largeCooldownSeconds": 3600,
+    "escalationSeconds": 300
+  },
   "publicBorrowRates": {
     "enabled": true,
     "highApr": "10",

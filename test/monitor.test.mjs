@@ -104,3 +104,21 @@ test('crash during delivery becomes uncertain; old pending messages expire',asyn
   assert.equal(db.prepare("SELECT status FROM outbox WHERE id='a'").get().status,'uncertain');
   assert.equal(db.prepare("SELECT status FROM outbox WHERE id='b'").get().status,'expired');db.close();
 });
+test('shared 2% price tiers escalate once at 5% without changing personal price defaults',()=>{
+ const db=openStore(':memory:');warm(db);
+ record(db,start+3600,101.99);assert.equal(alerts(db).length,0);
+ record(db,start+3660,102);assert.equal(alerts(db).length,1);
+ assert.doesNotMatch(alerts(db)[0].payload,/large move/);
+ record(db,start+3720,106);assert.equal(alerts(db).length,1);
+ record(db,start+3960,106);assert.equal(alerts(db).length,2);assert.match(alerts(db)[1].payload,/large move/);
+ record(db,start+4020,107);assert.equal(alerts(db).length,2);
+ const personal=openStore(':memory:');warm(personal);record(personal,start+3600,102,{...config,audienceId:'synthetic'});assert.equal(alerts(personal).length,0);
+ db.close();personal.close();
+});
+test('a pending small warning is replaced by escalation and cancelled escalation can rearm',()=>{
+ const db=openStore(':memory:');warm(db);const live={...config,mode:'live'};
+ record(db,start+3600,102,live);record(db,start+3900,106,live);
+ assert.equal(alerts(db)[0].status,'suppressed');assert.equal(alerts(db)[1].status,'pending');
+ db.prepare("UPDATE outbox SET status='suppressed' WHERE status='pending'").run();
+ record(db,start+3960,106,live);assert.equal(alerts(db).filter(r=>r.status==='pending').length,1);db.close();
+});

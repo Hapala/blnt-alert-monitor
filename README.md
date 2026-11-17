@@ -13,7 +13,7 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 
 | Update | Rule |
 | --- | --- |
-| Price move | At least ±5% over about one hour; one-hour cooldown, rearm below 3%. |
+| Price move | ±2% over about one hour; three-hour cooldown, rearm below 1%. ±5% gets a large-move warning with a one-hour cooldown; smaller alerts may escalate after five minutes. These tiers apply to shared posts; personal price defaults remain ±5%. |
 | High borrow rate | At least 10% APR per asset; check every five minutes. One warning per episode, at least six hours between warnings. Rearm at 9% or below; recovery posts require a confirmed delivered warning. Already-high rates can alert on activation. |
 | Borrow APR change | At least 1 percentage point up/down since the initial baseline or last rate update; one-hour cooldown per asset. Amber up, green down, with old/new APR. A gap over 15 minutes resets the baseline. High/recovery notices replace duplicate movement notices. Supply APY is not collected. |
 | Reserve added | A new asset detected in an already tracked pool. |

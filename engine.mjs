@@ -35,7 +35,7 @@ export function enqueue(db, id, now, payload, mode, routing={}) {
 export function reconcileAlert(db,state){
   if(state.pendingId){
     const row=db.prepare('SELECT status FROM outbox WHERE id=?').get(state.pendingId);
-    if(row&&['suppressed','expired'].includes(row.status)){state.armed=true;state.last=state.beforeQueuedLast??0;delete state.pendingId;}
+    if(row&&['suppressed','expired'].includes(row.status)){state.armed=true;state.last=state.beforeQueuedLast??0;if('beforeQueuedLevel' in state)state.lastLevel=state.beforeQueuedLevel;delete state.pendingId;}
     else if(row?.status==='sent')delete state.pendingId;
   }
   return state;
@@ -46,6 +46,13 @@ export function message(title, description, fields = []) {
 export function dailyDigestSlot(snapshot,c){
   const local=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:c.digestTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date(snapshot.observedAt*1000)).map(p=>[p.type,p.value]));
   return {due:Number(local.hour)>=c.digestHour&&snapshot.observations.length>0,key:`${snapshot.source??'website'}:${c.mode}:digest:${local.year}-${local.month}-${local.day}`};
+}
+export function priceAlertSettings(c,audience='shared'){
+  const rules=audience==='shared'?c.publicPriceAlerts:null;
+  if(!rules)return {thresholdPercent:c.thresholdPercent,rearmPercent:c.rearmPercent,cooldownSeconds:c.cooldownSeconds};
+  for(const k of ['thresholdPercent','rearmPercent','cooldownSeconds','largePercent','largeCooldownSeconds','escalationSeconds'])if(!Number.isFinite(rules[k])||rules[k]<=0)throw Error('Invalid public price rules');
+  if(rules.rearmPercent>=rules.thresholdPercent||rules.thresholdPercent>=rules.largePercent||rules.cooldownSeconds<3600||rules.largeCooldownSeconds<3600||rules.escalationSeconds<300)throw Error('Invalid public price tiers');
+  return rules;
 }
 export function dailyStatusMessage(snapshot,c,{preview=false,personal=false}={}) {
   const groups=new Map(),shown=snapshot.observations.slice(0,20);
@@ -81,6 +88,7 @@ export function processSnapshot(db, snapshot, c) {
   const now = snapshot.observedAt;
   const prefix='';
   const audience=c.audienceId??'shared',scope=audience==='shared'?'':`subscriber:${audience}:`;
+  const priceRules=priceAlertSettings(c,audience);
   const allowed=category=>!(c.mutedCategories??[]).includes(category);
   const queue=(id,payload,category,pool=null)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool});};
   db.exec('BEGIN IMMEDIATE');
@@ -103,17 +111,21 @@ export function processSnapshot(db, snapshot, c) {
         const state = reconcileAlert(db,getState(db, stateKey, {armed: true, last: 0}));
         const signed = direction === 'up' ? change : -change;
         const exact=Boolean(o.priceRaw&&baseline.priceRaw);
-        const rearm=exact?!reachesThreshold(o.priceRaw,baseline.priceRaw,c.rearmPercent,direction):signed<c.rearmPercent;
-        const triggered=exact?reachesThreshold(o.priceRaw,baseline.priceRaw,c.thresholdPercent,direction):signed>=c.thresholdPercent;
+        const rearm=exact?!reachesThreshold(o.priceRaw,baseline.priceRaw,priceRules.rearmPercent,direction):signed<priceRules.rearmPercent;
+        const triggered=exact?reachesThreshold(o.priceRaw,baseline.priceRaw,priceRules.thresholdPercent,direction):signed>=priceRules.thresholdPercent;
+        const large=priceRules.largePercent!=null&&(exact?reachesThreshold(o.priceRaw,baseline.priceRaw,priceRules.largePercent,direction):signed>=priceRules.largePercent);
+        const level=large?'large':'small',cooldown=large?priceRules.largeCooldownSeconds:priceRules.cooldownSeconds;
+        const escalation=large&&state.lastLevel==='small'&&now-state.last>=priceRules.escalationSeconds;
         if (rearm) state.armed = true;
-        if (triggered && state.armed && now - state.last >= c.cooldownSeconds) {
-          const payload=message(`${prefix}${direction==='up'?'📈':'📉'} ${o.symbol}: ${change >= 0 ? '+' : ''}${change.toFixed(2)}% over ~1 hour`,
+        if (triggered && (state.armed&&now-state.last>=cooldown||escalation)) {
+          if(escalation&&state.pendingId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.pendingId);
+          const payload=message(`${prefix}${direction==='up'?'📈':'📉'} ${o.symbol}: ${change >= 0 ? '+' : ''}${change.toFixed(2)}% over ~1 hour${large?' · large move':''}`,
             `**${o.poolName}** · **${o.priceExact??o.price.toPrecision(8)} ${o.quote}**\nPreviously ${baseline.price} ${o.quote} · ${Math.round((o.timestamp-baseline.t)/60)} min`);
-          Object.assign(payload.embeds[0],{color:direction==='up'?0x22C55E:0xEF4444,url:o.sourceUrl,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'Pool oracle reference price'}});
+          Object.assign(payload.embeds[0],{color:direction==='up'?(large?0xF59E0B:0x22C55E):0xEF4444,url:o.sourceUrl,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'Pool oracle reference price'}});
           const id=`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`;
           queue(id,payload,'price',o.pool);
-          state.beforeQueuedLast=state.last;state.pendingId=scope+id;
-          state.armed = false; state.last = now;
+          state.beforeQueuedLast=state.last;state.beforeQueuedLevel=state.lastLevel??null;state.pendingId=scope+id;
+          state.armed = false; state.last = now;state.lastLevel=level;
         }
         setState(db, stateKey, state);
       }
