@@ -56,6 +56,8 @@ Deployment requires administrator access. Both scripts use `deploy-isolated.py` 
 
 `deploy-dry-run.sh` installs only a new dry-run shared collector and refuses existing configurations. `deploy-subscriptions.sh` prepares and tests before stopping workers, backs up both stopped database writers, then switches units to the tested release. Activation verifies fresh heartbeats, source readiness and unchanged preferences. Failure restores the previous release and both previously active workers. First migration retains the old private runtime temporarily for rollback and disables its user services after success. No OpenClaw files are copied or modified. Never overwrite live config with the source template.
 
+If the owner explicitly approves retaining existing borrowing thresholds, activate the prepared release with `python3 deploy-isolated.py --activate --preserve-owner-rules`. This preserves existing settings; it does not configure or enable a rule. Without that explicit option, configured owner rules block activation before services stop.
+
 To activate real messages, explicitly authorize the destination, set runtime `mode=live`, and supply `BLNT_PUBLISH_APPROVED=true` to the appropriate service. `trial=true` permits a one-time labelled format sample; normal alerts omit trial labels. Activation is a deliberate operator action; installing source does not constitute consent from a subscriber. Use `/blnt-alerts subscribe` for self-service opt-in, or the operator-only `bootstrap-subscriber.mjs <verified Discord ID> <public address>` after explicit consent. New borrowing thresholds remain off until the user configures them.
 
 ```sh

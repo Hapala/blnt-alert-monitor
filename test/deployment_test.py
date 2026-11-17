@@ -13,7 +13,9 @@ class DeploymentTests(unittest.TestCase):
  def test_failed_activation_restores_both_workers_and_previous_release(self):
   with tempfile.TemporaryDirectory(prefix='blnt-rollback-test-') as tmp:
    root=pathlib.Path(tmp);runtime=root/'runtime';runtime.mkdir();(runtime/'.blnt-monitor-managed').touch();(runtime/'config.json').write_text('{}');(runtime/'data').mkdir()
-   with sqlite3.connect(runtime/'data/monitor.sqlite') as db:db.execute('CREATE TABLE subscribers(id TEXT,wallet TEXT,preferences TEXT,enabled INTEGER)')
+   with sqlite3.connect(runtime/'data/monitor.sqlite') as db:
+    db.execute('CREATE TABLE subscribers(id TEXT,wallet TEXT,preferences TEXT,enabled INTEGER)')
+    db.execute('INSERT INTO subscribers VALUES (?,?,?,?)',('340645983287246858','synthetic',json.dumps({'riskRules':{'synthetic':{'capacityPercent':'50'}}}),1))
    code=root/'code';code.mkdir();(code/'activation.json').write_text('{}');old=code/'releases'/'old';old.mkdir(parents=True);candidate=code/'releases'/'candidate';candidate.mkdir();(code/'current').symlink_to(old)
    (code/'prepared.json').write_text(json.dumps({'release':str(candidate),'fingerprint':'tested','preparedAt':m.time.time()}))
    units=root/'units';units.mkdir();before={u:'previous '+u for u in m.UNITS}
@@ -29,7 +31,11 @@ class DeploymentTests(unittest.TestCase):
     if args==['systemctl','daemon-reload'] and fail[0]:fail[0]=False;raise RuntimeError('Injected activation failure')
     return fake(args,**kw)
    with patch.multiple(m,RUNTIME=runtime,CODE=code,OLD=root/'absent',BACKUPS=root/'backups',UNIT_DIR=units),patch.object(m,'fingerprint',return_value='tested'),patch.object(m,'active',side_effect=lambda u,legacy=False:states[u]),patch.object(m.pwd,'getpwnam',return_value=types.SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())),patch.object(m,'run',side_effect=checked),patch.object(m.subprocess,'run',side_effect=fake):
-    with self.assertRaisesRegex(RuntimeError,'Injected'):m.activate()
+    initial=m.preferences(runtime)
+    with self.assertRaisesRegex(RuntimeError,'preserve-owner-rules'):m.activate()
+    self.assertEqual(calls,[]);self.assertTrue(all(states.values()))
+    with self.assertRaisesRegex(RuntimeError,'Injected'):m.activate(preserve_owner_rules=True)
+    self.assertEqual(m.preferences(runtime),initial)
    self.assertTrue(all(states.values()));self.assertEqual((code/'current').resolve(),old)
    for u,t in before.items():self.assertEqual((units/u).read_text(),t)
  def test_prepare_dependency_failure_never_stops_workers(self):

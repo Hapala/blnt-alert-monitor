@@ -111,7 +111,7 @@ def prepare(source,browser):
     (CODE/'prepared.json').write_text(json.dumps(marker)+'\n');os.chmod(CODE/'prepared.json',0o600)
     print(json.dumps({'prepared':True,'release':str(release),'servicesStopped':False}))
 
-def activate():
+def activate(preserve_owner_rules=False):
     marker=json.loads((CODE/'prepared.json').read_text());release=pathlib.Path(marker['release']).resolve()
     if release.parent!=CODE/'releases' or fingerprint(release)!=marker['fingerprint']:raise RuntimeError('Prepared release differs from tested code')
     if time.time()-marker['preparedAt']>86400:raise RuntimeError('Prepared release expired; retest')
@@ -119,7 +119,7 @@ def activate():
     source=OLD if migration else RUNTIME
     if not (source/'.blnt-monitor-managed').exists():raise RuntimeError('Existing managed monitor required for live migration')
     before=preferences(source)
-    if before['ownerBorrowingRulesEnabled']:raise RuntimeError('The owner requested borrowing rules remain off; found configured owner rules')
+    if before['ownerBorrowingRulesEnabled'] and not preserve_owner_rules:raise RuntimeError('Owner borrowing rules configured; explicit --preserve-owner-rules approval required')
     prior={unit:active(unit,legacy=migration) for unit in UNITS}
     unit_paths={unit:UNIT_DIR/unit for unit in UNITS}
     saved_units={u:p.read_text() if p.exists() else None for u,p in unit_paths.items()}
@@ -168,7 +168,7 @@ def activate():
         if migration:
             for unit in UNITS:userctl('disable',unit)
         legacy_retire=json.loads(old_activation).get('legacyRetireAt',time.time()+30*86400) if old_activation else time.time()+30*86400
-        receipt={'activated':True,'release':str(release),'dedicatedUser':ACCOUNT,'preferencesUnchanged':True,'borrowingRulesEnabled':after['borrowingRulesEnabled'],'ownerBorrowingRulesEnabled':False,'rollbackDirectory':str(backup),'legacyRetireAt':legacy_retire}
+        receipt={'activated':True,'release':str(release),'dedicatedUser':ACCOUNT,'preferencesUnchanged':True,'borrowingRulesEnabled':after['borrowingRulesEnabled'],'ownerBorrowingRulesEnabled':after['ownerBorrowingRulesEnabled'],'rollbackDirectory':str(backup),'legacyRetireAt':legacy_retire}
         (CODE/'activation.json').write_text(json.dumps(receipt,indent=2)+'\n');os.chmod(CODE/'activation.json',0o600)
         # Root-owned maintenance code cannot be modified by either alert worker.
         (UNIT_DIR/'blnt-alert-retention.service').write_text('[Unit]\nDescription=BLNT rollback backup retention\n[Service]\nType=oneshot\nExecStart=/usr/bin/python3 '+str(release/'deploy-isolated.py')+' --prune-backups\n')
@@ -217,14 +217,14 @@ def init_dry_run():
     print(json.dumps({'installed':True,'mode':'dry-run','personalWorkerStarted':False,'messagesEnabled':False}))
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--prepare',type=pathlib.Path);parser.add_argument('--browser',type=pathlib.Path,default=pathlib.Path('/home/hermes/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome'));parser.add_argument('--activate',action='store_true');parser.add_argument('--init-dry-run',action='store_true');parser.add_argument('--prune-backups',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--prepare',type=pathlib.Path);parser.add_argument('--browser',type=pathlib.Path,default=pathlib.Path('/home/hermes/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome'));parser.add_argument('--activate',action='store_true');parser.add_argument('--preserve-owner-rules',action='store_true',help='Preserve existing owner thresholds only after explicit owner approval');parser.add_argument('--init-dry-run',action='store_true');parser.add_argument('--prune-backups',action='store_true');args=parser.parse_args()
     if os.geteuid()!=0:raise SystemExit('Run as root to install isolated system services')
     try:
         if args.prepare:prepare(args.prepare.resolve(),args.browser.resolve())
         elif args.prune_backups:prune_backups()
         elif args.init_dry_run:init_dry_run()
         elif args.activate:
-            marker_activation=time.time();activate()
+            marker_activation=time.time();activate(preserve_owner_rules=args.preserve_owner_rules)
         else:parser.error('Choose --prepare or --activate')
     except Exception:
         print('Isolated deployment failed; credentials not displayed. Prior worker states restored when activation had begun.',flush=True);raise SystemExit(1)
