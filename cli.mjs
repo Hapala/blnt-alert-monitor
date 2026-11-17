@@ -7,6 +7,7 @@ import {OracleCollector,SOURCE} from './oracle-collector.mjs';
 import {compareWebsite,applyCrossCheck} from './cross-check.mjs';
 import {openStore, getState, setState,dailyDigestSlot} from './engine.mjs';
 import {collectPublicRates} from './borrow-collector.mjs';
+import {publicRateSettings,publicRatesDue,processPublicRateAlerts} from './public-rate-alerts.mjs';
 import {deliver,verifyWebhookTarget} from './webhook.mjs';
 import {prunePersonal} from './retention.mjs';
 if(process.argv.includes('--check-install')){console.log('Shared entry point imports verified');process.exit(0);}
@@ -44,6 +45,7 @@ function config() {
   }
   if (c.pollSeconds<30 || c.rearmPercent>=c.thresholdPercent || c.windowSeconds!==3600 || c.digestHour<0 || c.digestHour>23) throw Error('Invalid monitoring configuration');
   if (c.mode==='live' && process.env.BLNT_PUBLISH_APPROVED!=='true') throw Error('Live publishing requires explicit activation');
+  publicRateSettings(c);
   return c;
 }
 try {
@@ -83,9 +85,9 @@ try {
         if(stopping)break;
         applyCrossCheck(snapshot,check,c);
         const digest=dailyDigestSlot(snapshot,c);
-        // Collect all public reserve APRs only when preparing a new shared daily
-        // digest. Minute-by-minute price polling does not add reserve simulations.
-        if(digest.due&&!db.prepare('SELECT 1 FROM outbox WHERE id=?').get(digest.key)){
+        // Public reserve-only checks are bounded to once per configured interval.
+        if(publicRatesDue(db,snapshot.observedAt,c)||digest.due&&!db.prepare('SELECT 1 FROM outbox WHERE id=?').get(digest.key)){
+          setState(db,'publicRatesLastAttempt',snapshot.observedAt);
           try{snapshot.borrowRates=await collectPublicRates(collector.registry,c);setState(db,'publicBorrowRates',snapshot.borrowRates);}
           catch{snapshot.borrowRates={checkedAt:snapshot.observedAt,pools:[]};}
         }
@@ -93,6 +95,7 @@ try {
         if(stopping)break;
         const {processSnapshot} = await import('./engine.mjs');
         processSnapshot(db,snapshot,c);
+        processPublicRateAlerts(db,snapshot,c);
         prunePersonal(db);
         atomicJson(resolve(data,'latest.json'),snapshot);
         const status = {releaseId:process.env.BLNT_RELEASE_ID??'development',observedAt:snapshot.observedAt,mode:c.mode,ready:snapshot.issues.length===0&&snapshot.observations.length>0&&snapshot.observations.every(o=>o.alertEligible),source:SOURCE,sourceTimestampAvailable:true,

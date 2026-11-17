@@ -9,6 +9,17 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 - [Personal subscriptions and operations](DM_SUBSCRIPTIONS.md)
 - [Borrowing-capacity definitions and threshold commands](BORROWING_ALERTS.md)
 
+## Shared alerts
+
+| Update | Rule |
+| --- | --- |
+| Price move | At least ±5% over about one hour; one-hour cooldown, rearm below 3%. |
+| High borrow rate | At least 10% APR per asset; check every five minutes. One warning per episode, at least six hours between warnings. Rearm at 9% or below; recovery posts require a confirmed delivered warning. Already-high rates can alert on activation. |
+| Reserve added | A new asset detected in an already tracked pool. |
+| Daily update | 09:00 America/Vancouver: price and variable borrow APR together for each asset. |
+
+Only verified fresh public data can trigger these rules. Public rate rules use `publicBorrowRates` in the runtime config; failure retries are bounded to five minutes. These shared rules do not enable anyone's personal borrowing alerts. Samples are labelled; normal posts contain the pool, key value and trigger, with source/time in embed metadata.
+
 ## Development
 
 Requires Node 24. An installed Chrome/Chromium executable is required for website checks. Dependencies are pinned; installation does not download a browser.
@@ -45,7 +56,7 @@ Deployment requires administrator access. Both scripts use `deploy-isolated.py` 
 
 `deploy-dry-run.sh` installs only a new dry-run shared collector and refuses existing configurations. `deploy-subscriptions.sh` prepares and tests before stopping workers, backs up both stopped database writers, then switches units to the tested release. Activation verifies fresh heartbeats, source readiness and unchanged preferences. Failure restores the previous release and both previously active workers. First migration retains the old private runtime temporarily for rollback and disables its user services after success. No OpenClaw files are copied or modified. Never overwrite live config with the source template.
 
-To activate real messages, explicitly authorize the destination, set runtime `mode=live`, and supply `BLNT_PUBLISH_APPROVED=true` to the appropriate service. Trial messages use `trial=true` labels. Activation is a deliberate operator action; installing source does not constitute consent from a subscriber. Use `/blnt-alerts subscribe` for self-service opt-in, or the operator-only `bootstrap-subscriber.mjs <verified Discord ID> <public address>` after explicit consent. New borrowing thresholds remain off until the user configures them.
+To activate real messages, explicitly authorize the destination, set runtime `mode=live`, and supply `BLNT_PUBLISH_APPROVED=true` to the appropriate service. `trial=true` permits a one-time labelled format sample; normal alerts omit trial labels. Activation is a deliberate operator action; installing source does not constitute consent from a subscriber. Use `/blnt-alerts subscribe` for self-service opt-in, or the operator-only `bootstrap-subscriber.mjs <verified Discord ID> <public address>` after explicit consent. New borrowing thresholds remain off until the user configures them.
 
 ```sh
 sudo systemctl status blnt-alert-monitor blnt-dm-alerts

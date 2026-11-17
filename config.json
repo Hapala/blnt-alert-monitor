@@ -11,6 +11,13 @@
   "thresholdPercent": 5,
   "rearmPercent": 3,
   "cooldownSeconds": 3600,
+  "publicBorrowRates": {
+    "enabled": true,
+    "highApr": "10",
+    "recoveryApr": "9",
+    "pollSeconds": 300,
+    "cooldownSeconds": 21600
+  },
   "maxCaptureAgeSeconds": 600,
   "maxOracleAgeSeconds": 900,
   "crossCheckIntervalSeconds": 1800,

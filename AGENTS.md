@@ -22,6 +22,7 @@ Do not create additional agents or a separate chat unless the user or applicable
 - Clearly distinguish **accepted user intent**, **verified implementation**, **known implementation gaps** and **recommendations awaiting a decision**. Do not rewrite the spec to conceal a defect.
 - Ask the user to review meaningful requirement changes, especially data sources, access, privacy, alert meaning/thresholds, recipients, retention and live activation. Do not repeatedly ask for approval for work already authorized within those boundaries.
 - Guidance is not automatic implementation permission. Sample commands or numbers are never permission to activate personal rules.
+- Write alerts in plain, concise language: lead with the asset/pool and the value that changed, then the trigger or comparison. Use bold figures and a short footer for qualifications; avoid filler, repeated disclaimers and internal diagnostics. Public rules never enable personal thresholds.
 - Review the spec itself during each relevant changeset. Existing dates, success claims and operational snapshots are evidence, not guarantees that the live state remains unchanged.
 
 ## Security and scope boundaries
