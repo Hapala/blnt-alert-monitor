@@ -49,36 +49,37 @@ export function dailyDigestSlot(snapshot,c){
 }
 export function dailyStatusMessage(snapshot,c,{preview=false,personal=false}={}) {
   const groups=new Map(),shown=snapshot.observations.slice(0,20);
+  const report=snapshot.borrowRates,rateFresh=report&&report.checkedAt<=snapshot.observedAt+15&&snapshot.observedAt-report.checkedAt<=180;
   for(const o of shown){
-    const name=`${o.poolName} · ${o.quote} per asset`;
+    const name=`${o.poolName} · ${o.quote}`;
     if(!groups.has(name))groups.set(name,[]);
-    groups.get(name).push(`**${o.symbol}** — **${o.priceExact??o.price.toPrecision(8)}** ${o.quote}${o.alertEligible===false?' · cross-check unavailable':''}`);
+    const pool=rateFresh?report.pools.find(p=>p.id===o.pool&&p.available):null;
+    const rate=pool?.rates.find(r=>r.asset===o.asset);
+    groups.get(name).push(`**${o.symbol}** ${o.priceExact??o.price.toPrecision(8)} · ${rate?`**${rate.aprPercent}% APR**`:'APR unavailable'}${o.alertEligible===false?' · price unverified':''}`);
   }
-  const fields=[{name:'Data checks',value:`**${snapshot.observations.length}** price observations · **${snapshot.issues.length}** data-quality exclusions\nWebsite cross-check: **${snapshot.crossCheck?.status??'not checked'}**`,inline:false}];
+  const fields=[];
   for(const [name,lines] of groups){
     let value='';for(const line of lines){if(value.length+line.length+1>1024){fields.push({name,value,inline:false});value='';}value+=(value?'\n':'')+line;}
     if(value)fields.push({name,value,inline:false});
   }
-  const report=snapshot.borrowRates,rateFresh=report&&Math.abs(report.checkedAt-snapshot.observedAt)<=180;
+  // Rates without a price still belong in the digest; never hide failed price coverage.
   for(const pool of snapshot.markets){
-    const data=rateFresh?report.pools.find(p=>p.id===pool.id):null,name=`${pool.name} · Borrow interest (APR)`;
-    if(!data?.available){fields.push({name,value:'**Unavailable** — current reserve rates could not be verified. No rate is assumed.',inline:false});continue;}
-    const lines=data.rates.map(r=>`**${r.symbol}** — **${r.aprPercent}% APR**`);
-    if(data.disabledReserves)lines.push(`${data.disabledReserves} disabled reserve(s) excluded.`);
-    if(!lines.length)lines.push('No enabled borrowing reserves.');
+    const data=rateFresh?report.pools.find(p=>p.id===pool.id):null,name=`${pool.name} · Borrow APR`;
+    if(!data?.available){if(!shown.some(o=>o.pool===pool.id))fields.push({name,value:'Unavailable',inline:false});continue;}
+    const lines=data.rates.filter(r=>!shown.some(o=>o.pool===pool.id&&o.asset===r.asset)).map(r=>`**${r.symbol}** price unavailable · **${r.aprPercent}% APR**`);
     let value='';for(const line of lines){if(value.length+line.length+1>1024){fields.push({name,value,inline:false});value='';}value+=(value?'\n':'')+line;}
     if(value)fields.push({name,value,inline:false});
   }
-  if(rateFresh)fields.push({name:'Rate snapshot (UTC)',value:new Date(report.checkedAt*1000).toISOString(),inline:false});
+  if(snapshot.issues.length||snapshot.crossCheck?.status!=='match')fields.push({name:'Data',value:`${snapshot.issues.length} exclusions · Website: ${snapshot.crossCheck?.status??'not checked'}`,inline:false});
   const omitted=snapshot.observations.length-shown.length;
-  const payload=message(`${c.trial?'[PRIVATE TRIAL] ':''}${preview?'[SAMPLE] ':''}${personal?'Your':'BLNT'} daily pool status`,
-    `${preview?'**Format preview using current public pool data.** This is an extra sample; the daily schedule is unchanged.\n\n':''}**Pool oracle reference prices and borrow APRs**${omitted?` · ${omitted} additional price observations not shown`:''}\nFixed V3 quotes **USD**; YieldBlent quotes **USDC**. These quote currencies are not treated as interchangeable.\n**Borrow APR** is the current variable annualized borrowing rate for each asset, **not APY** or a wallet-specific charge.\n\nTrading volume and liquidity are not included. Data checks describe the feeds, not pool safety.`,fields);
-  Object.assign(payload.embeds[0],{color:0x3B82F6,timestamp:new Date(snapshot.observedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'BLNT • Daily snapshot • Oracle references, not execution prices'}});
+  const payload=message(`${preview?'[SAMPLE] ':''}${personal?'Your':'BLNT'} daily update`,
+    `${preview?'Sample — no alert triggered.\n':''}Price per asset · variable borrow APR (not APY).${omitted?` ${omitted} more prices omitted.`:''}`,fields);
+  Object.assign(payload.embeds[0],{color:0x3B82F6,timestamp:new Date(snapshot.observedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:`Oracle reference prices · Rates ${rateFresh?new Date(report.checkedAt*1000).toISOString():'unavailable'}`}});
   return payload;
 }
 export function processSnapshot(db, snapshot, c) {
   const now = snapshot.observedAt;
-  const prefix=c.trial?'[PRIVATE TRIAL] ':'';
+  const prefix='';
   const audience=c.audienceId??'shared',scope=audience==='shared'?'':`subscriber:${audience}:`;
   const allowed=category=>!(c.mutedCategories??[]).includes(category);
   const queue=(id,payload,category,pool=null)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool});};
@@ -107,14 +108,8 @@ export function processSnapshot(db, snapshot, c) {
         if (rearm) state.armed = true;
         if (triggered && state.armed && now - state.last >= c.cooldownSeconds) {
           const payload=message(`${prefix}${direction==='up'?'📈':'📉'} ${o.symbol}: ${change >= 0 ? '+' : ''}${change.toFixed(2)}% over ~1 hour`,
-            `**Pool:** ${o.poolName}\n**Price:** ${o.priceExact??o.price.toPrecision(8)} **${o.quote} per ${o.symbol}**\n**Move:** **${change>=0?'+':''}${change.toFixed(2)}%**\nPool oracle reference price; not an execution price.`, [
-              {name: 'Asset contract', value: o.asset},
-              {name: 'Oracle price time (UTC)', value: new Date(o.timestamp * 1000).toISOString()},
-              {name: 'Comparison interval', value: `${Math.round((o.timestamp-baseline.t)/60)} minutes between oracle timestamps`},
-              {name: 'Read at (UTC)', value: new Date(o.observedAt * 1000).toISOString()},
-              {name: 'Source', value: o.sourceUrl},
-            ]);
-          Object.assign(payload.embeds[0],{color:direction==='up'?0x22C55E:0xEF4444,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'BLNT • Price movement • Green = rise; red = fall'}});
+            `**${o.poolName}** · **${o.priceExact??o.price.toPrecision(8)} ${o.quote}**\nPreviously ${baseline.price} ${o.quote} · ${Math.round((o.timestamp-baseline.t)/60)} min`);
+          Object.assign(payload.embeds[0],{color:direction==='up'?0x22C55E:0xEF4444,url:o.sourceUrl,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'Pool oracle reference price'}});
           const id=`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`;
           queue(id,payload,'price',o.pool);
           state.beforeQueuedLast=state.last;state.pendingId=scope+id;
@@ -141,12 +136,8 @@ export function processSnapshot(db, snapshot, c) {
     if(c.mode==='live'&&c.trial) {
       const o=snapshot.observations.find(o=>o.alertEligible&&o.priceExact);
       if(o)queue(`${snapshot.source}:private-trial:format-preview:v1`,
-        message('[PRIVATE TRIAL] Price alert format preview',
-          `Format preview only — no price-movement threshold is asserted by this message.\n${o.poolName}: ${o.priceExact} ${o.quote} per ${o.symbol}.\nLive trial alerts use the configured +/-${c.thresholdPercent}% over approximately one hour, with cooldowns and website cross-checks.`,[
-            {name:'Asset contract',value:o.asset},
-            {name:'Oracle price time (UTC)',value:new Date(o.timestamp*1000).toISOString()},
-            {name:'Source',value:o.sourceUrl},
-          ]),'format_preview',o.pool);
+        message('[SAMPLE] Price alert',
+          `Sample — no price-movement threshold triggered.\n**${o.poolName} · ${o.symbol}** ${o.priceExact} ${o.quote}`),'format_preview',o.pool);
     }
     const cutoff = now - c.retentionDays * 86400;
     db.prepare('DELETE FROM samples WHERE t<?').run(cutoff);

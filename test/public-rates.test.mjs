@@ -32,3 +32,15 @@ test('borrowing responses separate disabled thresholds from configured rules and
  sub.preferences.riskRules[pool.id]={capacityPercent:'20',borrowApr:'10',rateScope:'borrowed'};sub.preferences.mutedPools=[pool.id];text=borrowingStatus(sub,null,registry,now);
  assert.match(text,/below \*\*20%/);assert.match(text,/above \*\*10% APR/);assert.match(text,/Pool muted/);assert.match(text,/only assets you currently borrow/);assert.ok(text.length<=2000);
 });
+
+test('compact digest pairs each price with its own pool/asset APR and retains rates without prices',()=>{
+ const snapshot={observedAt:now,markets:[{id:pool.id,name:pool.name}],issues:[],crossCheck:{status:'match'},
+ observations:[{pool:pool.id,poolName:pool.name,asset,symbol:'TEST',priceExact:'1.002',quote:'USD'}],
+ borrowRates:{checkedAt:now,pools:[{id:pool.id,available:true,rates:[{asset,symbol:'TEST',aprPercent:'12'},{asset:'missing',symbol:'OTHER',aprPercent:'4'}]}]}};
+ const embed=dailyStatusMessage(snapshot,config).embeds[0],text=JSON.stringify(embed);
+ assert.match(text,/TEST\*\* 1.002 · \*\*12% APR/);assert.match(text,/OTHER\*\* price unavailable/);
+ assert.doesNotMatch(text,/PRIVATE TRIAL|Data checks|not a wallet-specific/);assert.ok(embed.description.length<100);
+ snapshot.borrowRates.checkedAt=now+16;
+ assert.match(JSON.stringify(dailyStatusMessage(snapshot,config)),/APR unavailable/);
+ assert.doesNotMatch(JSON.stringify(dailyStatusMessage(snapshot,config)),/12% APR/);
+});

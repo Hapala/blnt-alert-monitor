@@ -35,14 +35,14 @@ test('future or expired capture timestamps never enter alert history',()=>{
   processSnapshot(db,{observedAt:start,observations:[observation(start+3600),observation(start-3600)],markets:[],issues:[]},config);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM samples').get().n,0);db.close();
 });
-test('private trial labels real updates and queues only one explicitly marked format preview',()=>{
+test('trial queues only one explicitly marked concise sample',()=>{
   const db=openStore(':memory:');
   const o={...observation(start),priceExact:'100.0000000',alertEligible:true};
   for(const t of [start,start+60])processSnapshot(db,{source:'oracle',observedAt:t,observations:[{...o,timestamp:t}],markets:[],issues:[],crossCheck:{status:'match'}},{...config,mode:'live',trial:true});
   const previews=db.prepare("SELECT payload FROM outbox WHERE id LIKE '%format-preview%'").all();
   assert.equal(previews.length,1);
   assert.match(JSON.parse(previews[0].payload).embeds[0].description,/no price-movement threshold/);
-  assert.match(JSON.parse(previews[0].payload).embeds[0].title,/PRIVATE TRIAL/);db.close();
+  assert.match(JSON.parse(previews[0].payload).embeds[0].title,/SAMPLE/);db.close();
 });
 test('repeated crossings require re-arm and cooldown',()=>{
   const db=openStore(':memory:');warm(db);record(db,start+3600,106);record(db,start+3660,107);
