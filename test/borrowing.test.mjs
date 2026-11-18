@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {capacity,borrowAprRaw,decimal,formatUnits} from '../borrow-math.mjs';
 import {collectBorrowing} from '../borrow-collector.mjs';
 import {processBorrowing} from '../borrow-alerts.mjs';
+import {monitoringIssues} from '../health-alerts.mjs';
 import {openStore,setState} from '../engine.mjs';
 import {initSubscriptions,saveSubscriber,getSubscriber} from '../subscriptions.mjs';
 import {applyCommand,commandDefinition} from '../subscription-commands.mjs';
@@ -19,6 +20,25 @@ const snapshot={source:'oracle',observedAt:now,observations:[],markets:[],issues
 function report(t=now,remaining='10',apr='1100000'){
   return {wallet,checkedAt:t,sourceObservedAt:t,pools:{[P]:{name:'Fixed V3',quote:'USD',stale:false,capacity:{ready:true,relevant:true,remaining:String(BigInt(remaining)*10000000n),limit:'1000000000',quoteDecimals:7,amountRemaining:remaining,percentRemaining:remaining},rates:[{asset:'a',symbol:'TEST',borrowed:true,aprRaw:apr,aprPercent:String(Number(apr)/100000)}]}}};
 }
+
+test('worker health exposes stale pools and incomplete configured checks, while muted or irrelevant rules stay quiet',async()=>{
+ for(const kind of ['stale','missing','capacity','muted-capacity','rate-only','no-positions']){
+  const db=setup();applyCommand(db,id,'capacity',{pool:P,percent:20},registry,now);
+  if(kind==='muted-capacity')applyCommand(db,id,'mute',{category:'capacity'},registry,now);
+  if(kind==='rate-only'){applyCommand(db,id,'capacity',{pool:P,clear:true},registry,now);applyCommand(db,id,'rate',{pool:P,apr:10},registry,now);}
+  setState(db,`discovery:${id}`,{wallet,checkedAt:now,pools:{[P]:{associated:true,stale:false}}});
+  const result=await subscriptionTick(db,{},snapshot,config,registry,undefined,async()=>({ledgerTime:now}),async()=>{
+   const r=report();if(kind==='stale')r.pools[P]={stale:true};
+   if(kind==='missing')delete r.pools[P];
+   if(['capacity','muted-capacity','rate-only'].includes(kind))r.pools[P].capacity={ready:false};
+   if(kind==='no-positions'){r.pools[P].capacity.relevant=false;r.pools[P].rates=[];}
+   return r;
+  },()=>0);
+  const failed=['stale','missing','capacity'].includes(kind);assert.equal(result.failures>0,failed,kind);
+  const issues=monitoringIssues({shared:{ready:true,observedAt:now},personal:{active:true,...result,sourceObservedAt:now},ratesEnabled:false,now});
+  assert.equal(issues.includes('Personal alert checks'),failed,kind);db.close();
+ }
+});
 test('capacity reproduces contract health-factor fixture with mixed token decimals and conservative rounding',()=>{
   const a=reserve(),b=reserve(1),c=reserve(2);
   b.scalar=1000000000n;b.config.decimals=9;b.config.c_factor=8500000;b.config.l_factor=8000000;b.data.b_rate=1100000000000n;b.data.d_rate=1150000000000n;

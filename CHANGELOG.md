@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-18 — Personal monitoring health coverage
+
+Aggregate stale/missing borrowing pool results and incomplete configured capacity/rate checks into personal-worker health instead of counting exceptions alone. Unmuted discovery failures also mark the cycle degraded. Unconfigured/muted checks and valid wallets without positions do not invent failures. Shared health posts keep generic component labels. Add worker-to-watchdog regression tests; no user rules or thresholds change.
+
 ## 2026-11-18 — Cancel prices when verification is withdrawn
 
 Cancel definitely unsent price alerts when current verified asset coverage is missing, stale or fails the website cross-check. Cancelled warnings can rearm when verification returns; sent/uncertain messages and other audiences remain untouched. Add rate-limit retry and audience-isolation regressions. Price events remain timestamped historical changes; recovery alone does not withdraw a verified event.

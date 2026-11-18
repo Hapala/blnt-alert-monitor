@@ -119,6 +119,12 @@ test('pilot capacity rejects new enrolment without stopping existing subscribers
   saveSubscriber(db,A,wallet,now);assert.equal(getSubscriber(db,A).enabled,1);db.close();
 });
 
+test('failed unmuted discovery contributes to aggregate personal health',async()=>{
+ const db=setup(),snapshot={observedAt:now,observations:[],markets:[],issues:[]};
+ const result=await subscriptionTick(db,{},snapshot,config,registry,async()=>({checkedAt:now,pools:{[P]:{stale:true}}}),async()=>({ledgerTime:now}),undefined,()=>0);
+ assert.equal(result.failures,1);db.close();
+});
+
 test('forget during successful or failed borrowing collection cannot recreate erased state, including same-wallet re-enrolment',async()=>{
  for(const fail of [false,true])for(const resubscribe of [false,true]){
   const db=setup();applyCommand(db,A,'capacity',{pool:P,percent:20},registry,now);

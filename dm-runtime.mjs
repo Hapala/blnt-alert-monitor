@@ -2,7 +2,7 @@ import {getState,setState,message} from './engine.mjs';
 import {getSubscriber,currentSubscription,discoverWallet,mergeDiscovery,selectedPools,suppressUnwanted,processSubscriber,disableSubscriber} from './subscriptions.mjs';
 import {selectProvider} from './public-rpc.mjs';
 import {collectBorrowing} from './borrow-collector.mjs';
-import {hasRiskRules,processBorrowing,suppressRiskPending} from './borrow-alerts.mjs';
+import {hasRiskRules,requiredRiskPools,borrowingChecksFailed,processBorrowing,suppressRiskPending} from './borrow-alerts.mjs';
 
 export async function deliverDms(db,api,id,now,registry,{freshNow=()=>now,snapshot,maxAge=900}={}) {
   let sub=getSubscriber(db,id);if(!sub?.enabled||getState(db,`dm-delivery:${id}`,{}).blocked)return;
@@ -67,19 +67,21 @@ export async function subscriptionTick(db,api,snapshot,config,registry,discover=
         discovery={...mergeDiscovery(discovery,fresh),wallet:sub.wallet};setState(db,`discovery:${id}`,discovery);
       }
       sub=getSubscriber(db,id);
+      if(Object.entries(discovery.pools).some(([pool,data])=>data.stale&&!sub.preferences.mutedPools.includes(pool)))failures++;
       processSubscriber(db,sub,discovery,snapshot,config,registry);
       if(hasRiskRules(sub)){
-        const pools=selectedPools(sub,discovery,now);
-        try{
+        const pools=requiredRiskPools(sub,selectedPools(sub,discovery,now));
+        if(pools.length){try{
           const report=await riskCollector(sub,pools,snapshot,registry,config),current=getSubscriber(db,id);
           if(!currentSubscription(db,sub))continue;
+          if(borrowingChecksFailed(current,report,pools,freshNow()))failures++;
           setState(db,`borrowing:${id}`,report);
           processBorrowing(db,current,report,selectedPools(current,getState(db,`discovery:${id}`,null),report.checkedAt),config);
         }catch{
           if(!currentSubscription(db,sub))continue;
           failures++;setState(db,`borrowing:${id}`,{wallet:sub.wallet,checkedAt:now,pools:Object.fromEntries(pools.map(pool=>[pool,{stale:true}]))});
           for(const pool of pools)for(const category of ['capacity','borrow_rate'])suppressRiskPending(db,id,pool,category);
-        }
+        }}
       }
       if(config.mode==='live')await deliverDms(db,api,id,freshNow(),registry,{freshNow,snapshot,maxAge:config.maxOracleAgeSeconds});
     }catch {failures++;}

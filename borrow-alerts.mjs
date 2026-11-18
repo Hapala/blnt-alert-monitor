@@ -12,6 +12,22 @@ export function validateRiskRules(rules,registry){
   }
 }
 export function hasRiskRules(sub){return Object.values(sub.preferences.riskRules??{}).some(r=>r.capacityPercent!=null||r.capacityAmount!=null||r.borrowApr!=null);}
+export function requiredRiskPools(sub,pools){
+  return pools.filter(pool=>{
+    const rule=sub.preferences.riskRules?.[pool]??{},muted=sub.preferences.mutedCategories;
+    return !muted.includes('capacity')&&(rule.capacityPercent!=null||rule.capacityAmount!=null)||!muted.includes('borrow_rate')&&rule.borrowApr!=null;
+  });
+}
+export function borrowingChecksFailed(sub,report,pools,now){
+  return pools.some(pool=>{
+    const rule=sub.preferences.riskRules?.[pool]??{},muted=sub.preferences.mutedCategories;
+    const capacityRequired=!muted.includes('capacity')&&(rule.capacityPercent!=null||rule.capacityAmount!=null);
+    const rateRequired=!muted.includes('borrow_rate')&&rule.borrowApr!=null;
+    if(!capacityRequired&&!rateRequired)return false;
+    const data=report?.pools?.[pool];
+    return report?.wallet!==sub.wallet||!Number.isFinite(report.checkedAt)||now-report.checkedAt>180||report.checkedAt>now+15||!Number.isFinite(report.sourceObservedAt)||now-report.sourceObservedAt>180||report.sourceObservedAt>now+15||!data||data.stale!==false||(capacityRequired&&data.capacity?.ready!==true)||(rateRequired&&!Array.isArray(data.rates));
+  });
+}
 export function suppressRiskPending(db,id,pool,category){
   db.prepare("UPDATE outbox SET status='suppressed' WHERE audience=? AND pool=? AND category=? AND status='pending'").run(id,pool,category);
 }
