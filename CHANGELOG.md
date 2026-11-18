@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-18 — Windows OpenClaw startup helper
+
+Add a separate current-user Windows sign-in task to launch the existing Ubuntu OpenClaw gateway and keep WSL running without a visible console. Document verification, removal and the after-login boundary. No OpenClaw credentials, models, access policies, BLNT subscriptions or unrelated tasks are changed. A real reboot test remains separate from a manual startup test.
+
 ## 2026-11-18 — Long-running APR recovery evidence
 
 Retain the high/recovery outbox records referenced by each public rate episode beyond ordinary eight-day history retention. Release references after confirmed recovery so old evidence can be pruned without replaying a recovery. At most two records per tracked rate state receive this exception; thresholds/settings are unchanged. Add a continuous nine-day episode regression covering recovery, evidence cleanup and no replay after later retention.
