@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-18 — Long-running APR recovery evidence
+
+Retain the high/recovery outbox records referenced by each public rate episode beyond ordinary eight-day history retention. Release references after confirmed recovery so old evidence can be pruned without replaying a recovery. At most two records per tracked rate state receive this exception; thresholds/settings are unchanged. Add a continuous nine-day episode regression covering recovery, evidence cleanup and no replay after later retention.
+
 ## 2026-11-18 — Liquidity retry severity
 
 Cancel an unsent critical liquidity warning when the latest verified preview is below the critical threshold. If no warning was delivered, replace it with the current ordinary severity; an already delivered warning retains its cooldown and recovery history. Sent/uncertain outcomes never replay. Add rate-limit, downgrade, recovery/cooldown and uncertain-send regressions. Thresholds are unchanged.

@@ -137,7 +137,7 @@ Current managed paths are `/opt/blnt-alert-monitor/releases` (immutable code), `
 
 | ID | Requirement | Acceptance check |
 | --- | --- | --- |
-| KEEP-01 | Retain ordinary shared samples/run history for eight days. Prune orphan receipts and obsolete rule state without discarding unresolved delivery evidence silently. | Retention tests and database lifecycle inspection. |
+| KEEP-01 | Retain ordinary shared samples/run history for eight days. Prune orphan receipts and obsolete rule state without discarding unresolved delivery evidence silently. Preserve the high/recovery delivery rows referenced by a public APR episode beyond eight days (at most two per tracked rate state); release them after confirmed recovery so normal retention resumes. | Retention tests and database lifecycle inspection. |
 | KEEP-02 | Explicit confirmed `forget` applies only to the stopped caller's local records. Other users remain unchanged; existing Discord messages and already in-flight sends are outside local erasure. Late discovery, borrowing and delivery completions must not recreate erased local records, including after same-wallet re-enrolment. | Deletion tests reject active/unconfirmed deletion, preserve another subscriber and cover successful/failed asynchronous work and re-enrolment. |
 | KEEP-03 | Private operator rollback backups are bounded to 30 days/10 snapshots by the daily retention timer. Retire the former private runtime's data/secrets/backups after its migration grace period. | Verify timer active and managed-path protections; disclose rollback retention to subscribers. |
 

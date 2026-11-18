@@ -1,12 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {openStore,setState} from '../engine.mjs';
+import {openStore,setState,processSnapshot} from '../engine.mjs';
+import {readFileSync} from 'node:fs';
 import {processPublicRateAlerts,publicRatesDue,publicRateSettings} from '../public-rate-alerts.mjs';
 const now=1800000000,config={mode:'live',publicBorrowRates:{enabled:true,highApr:'10',recoveryApr:'9',pollSeconds:300,cooldownSeconds:21600}};
 function snapshot(t=now,raw='1000000'){
  return {observedAt:t,markets:[{id:'pool',name:'Pool'}],borrowRates:{checkedAt:t,pools:[{id:'pool',name:'Pool',available:true,rates:[{asset:'asset',symbol:'TEST',aprRaw:raw,aprPercent:String(Number(raw)/100000)}]}]}};
 }
 const rows=db=>db.prepare("SELECT * FROM outbox WHERE audience='shared'").all();
+
+test('a nine-day high-rate episode survives retention, recovers once and releases old delivery evidence',()=>{
+ const db=openStore(':memory:'),retention={...JSON.parse(readFileSync(new URL('../config.json',import.meta.url))),mode:'live',trial:false};
+ const prune=t=>processSnapshot(db,{observedAt:t,observations:[],markets:[],issues:[]},retention);
+ processPublicRateAlerts(db,snapshot(now,'1100000'),config);const high=rows(db)[0].id;db.prepare("UPDATE outbox SET status='sent'").run();
+ for(let t=now+300;t<=now+9*86400;t+=300){prune(t);processPublicRateAlerts(db,snapshot(t,'1100000'),config);}
+ assert.equal(db.prepare('SELECT status FROM outbox WHERE id=?').get(high).status,'sent');
+ const recoveredAt=now+9*86400+300;processPublicRateAlerts(db,snapshot(recoveredAt,'800000'),config);
+ const recoveries=rows(db).filter(r=>r.id.includes(':recovery:'));assert.equal(recoveries.length,1);
+ db.prepare("UPDATE outbox SET status='sent' WHERE id=?").run(recoveries[0].id);
+ processPublicRateAlerts(db,snapshot(recoveredAt+300,'800000'),config);prune(recoveredAt+300);
+ assert.equal(db.prepare('SELECT id FROM outbox WHERE id=?').get(high),undefined);
+ prune(now+18*86400);processPublicRateAlerts(db,snapshot(now+18*86400,'800000'),config);
+ assert.equal(rows(db).filter(r=>r.id.includes(':recovery:')).length,0);db.close();
+});
 test('public rates use exact 10% boundary, deduplicate sustained rates, recover at 9% and cool down',()=>{
  const db=openStore(':memory:');processPublicRateAlerts(db,snapshot(now,'999999'),config);assert.equal(rows(db).length,0);
  processPublicRateAlerts(db,snapshot(),config);assert.equal(rows(db).length,1);

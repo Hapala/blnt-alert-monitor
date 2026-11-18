@@ -68,6 +68,9 @@ export function processPublicRateAlerts(db,snapshot,config){
       for(const rate of pool.rates){
         const key=`public-rate:${config.mode}:${pool.id}:${rate.asset}`;
         const state=reconcileAlert(db,getState(db,key,{armed:true,last:0,sequence:0}));
+        if(state.recoveryId&&db.prepare('SELECT status FROM outbox WHERE id=?').get(state.recoveryId)?.status==='sent'){
+          delete state.highId;delete state.recoveryId;
+        }
         const value=BigInt(rate.aprRaw)*100n*PERCENT;
         const high=value>=rules.high*S7,recovered=value<=rules.recovery*S7;
         const queue=(kind,title,description,color)=>{

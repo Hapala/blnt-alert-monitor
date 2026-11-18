@@ -161,7 +161,11 @@ export function processSnapshot(db, snapshot, c) {
     const cutoff = now - c.retentionDays * 86400;
     db.prepare('DELETE FROM samples WHERE t<?').run(cutoff);
     db.prepare('DELETE FROM runs WHERE t<?').run(cutoff);
-    db.prepare("DELETE FROM outbox WHERE created<? AND status IN ('preview','sent','expired','suppressed')").run(cutoff);
+    // Retain bounded episode evidence until the rate state releases it.
+    db.prepare(`DELETE FROM outbox WHERE created<? AND status IN ('preview','sent','expired','suppressed') AND id NOT IN (
+      SELECT json_extract(value,'$.highId') FROM state WHERE key LIKE 'public-rate:%' AND json_extract(value,'$.highId') IS NOT NULL
+      UNION SELECT json_extract(value,'$.recoveryId') FROM state WHERE key LIKE 'public-rate:%' AND json_extract(value,'$.recoveryId') IS NOT NULL
+    )`).run(cutoff);
     db.exec('COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
