@@ -9,6 +9,7 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 - [Personal subscriptions and operations](DM_SUBSCRIPTIONS.md)
 - [Borrowing-capacity definitions and threshold commands](BORROWING_ALERTS.md)
 - [Public pool-status and liquidity alerts](POOL_ALERTS.md)
+- [Change history](CHANGELOG.md)
 
 ## Shared alerts
 
