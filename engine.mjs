@@ -94,6 +94,10 @@ export function processSnapshot(db, snapshot, c) {
   const queue=(id,payload,category,pool=null)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool});};
   db.exec('BEGIN IMMEDIATE');
   try {
+    // A known-unsent price warning must not outlive verified asset coverage.
+    const verified=snapshot.observations.filter(o=>allowed('price')&&o.alertEligible!==false&&o.timestamp<=now+15&&now-o.timestamp<=(o.priceRaw?c.maxOracleAgeSeconds:c.maxCaptureAgeSeconds));
+    for(const row of db.prepare("SELECT id FROM outbox WHERE audience=? AND category='price' AND status='pending'").all(audience))
+      if(!verified.some(o=>['up','down'].some(direction=>row.id.startsWith(`${scope}${c.mode}:alert:${o.key}:${direction}:`))))db.prepare("UPDATE outbox SET status='suppressed' WHERE id=?").run(row.id);
     if(audience==='shared'&&c.sharedDigestEnabled===false)db.prepare("UPDATE outbox SET status='suppressed' WHERE audience='shared' AND category='digest' AND status='pending'").run();
     if(audience==='shared')db.prepare('INSERT OR REPLACE INTO runs VALUES (?,?)').run(now, JSON.stringify(snapshot));
     for (const o of snapshot.observations) {

@@ -27,6 +27,28 @@ test('requires a full continuous one-hour price window; dry-run only previews',(
   const db=openStore(':memory:');record(db,start,100);record(db,start+60,110);assert.equal(alerts(db).length,0);
   warm(db);record(db,start+3600,106);assert.equal(alerts(db).length,1);assert.equal(alerts(db)[0].status,'preview');db.close();
 });
+
+test('rate-limited price alerts cancel on withdrawn, missing or stale coverage and rearm when verified',async()=>{
+ for(const invalid of ['unverified','missing','stale']){
+  const db=openStore(':memory:'),c={...config,mode:'live',trial:false};warm(db);
+  record(db,start+3600,106,c);
+  await deliver(db,'https://discord.com/api/webhooks/123456/test_token',start+3600,async()=>({ok:false,status:429,json:async()=>({retry_after:120})}));
+  const bad=observation(start+3660,106);if(invalid==='unverified')bad.alertEligible=false;if(invalid==='stale')bad.timestamp-=c.maxCaptureAgeSeconds+1;
+  processSnapshot(db,{observedAt:start+3660,observations:invalid==='missing'?[]:[bad],markets:[],issues:[]},c);
+  assert.equal(alerts(db)[0].status,'suppressed');
+  let sent=0;await deliver(db,'https://discord.com/api/webhooks/123456/test_token',start+3720,async()=>{sent++;return {ok:true};});assert.equal(sent,0);
+  record(db,start+3720,106,c);assert.equal(alerts(db).filter(r=>r.status==='pending').length,1);db.close();
+ }
+});
+
+test('price coverage cancellation preserves other audiences and uncertain deliveries',()=>{
+ const db=openStore(':memory:'),c={...config,mode:'live',trial:false};warm(db);record(db,start+3600,106,c);
+ const row=alerts(db)[0];db.prepare("UPDATE outbox SET status='uncertain' WHERE id=?").run(row.id);
+ enqueue(db,'personal',start+3600,message('test','test'),'live',{audience:'111111111111111111',category:'price'});
+ processSnapshot(db,{observedAt:start+3660,observations:[],markets:[],issues:[]},c);
+ assert.equal(db.prepare('SELECT status FROM outbox WHERE id=?').get(row.id).status,'uncertain');
+ assert.equal(db.prepare("SELECT status FROM outbox WHERE id='personal'").get().status,'pending');db.close();
+});
 test('gap suppresses alerts even with two valid endpoints',()=>{
   const db=openStore(':memory:');record(db,start,100);record(db,start+3600,106);assert.equal(alerts(db).length,0);db.close();
 });
