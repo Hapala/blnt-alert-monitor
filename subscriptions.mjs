@@ -1,4 +1,5 @@
 import {StrKey,Address,xdr} from '@stellar/stellar-sdk';
+import {randomUUID} from 'node:crypto';
 import {getState,setState,enqueue,message,processSnapshot} from './engine.mjs';
 import {selectProvider} from './public-rpc.mjs';
 import {validateRiskRules} from './borrow-alerts.mjs';
@@ -12,6 +13,8 @@ export function initSubscriptions(db) {
   const columns=new Set(db.prepare('PRAGMA table_info(dm_receipts)').all().map(c=>c.name));
   if(!columns.has('botId'))db.exec('ALTER TABLE dm_receipts ADD COLUMN botId TEXT');
   if(!columns.has('sentAt'))db.exec('ALTER TABLE dm_receipts ADD COLUMN sentAt INTEGER');
+  if(!db.prepare('PRAGMA table_info(subscribers)').all().some(c=>c.name==='generation'))db.exec('ALTER TABLE subscribers ADD COLUMN generation TEXT');
+  for(const {id} of db.prepare('SELECT id FROM subscribers WHERE generation IS NULL').all())db.prepare('UPDATE subscribers SET generation=? WHERE id=? AND generation IS NULL').run(randomUUID(),id);
 }
 export const defaults=()=>({extraPools:[],mutedPools:[],mutedCategories:[],paused:false,snoozeUntil:0,riskRules:{}});
 export function validWallet(wallet){return StrKey.isValidEd25519PublicKey(wallet)||StrKey.isValidContract(wallet);}
@@ -24,9 +27,9 @@ export function saveSubscriber(db,id,wallet,now) {
   const previous=getSubscriber(db,id),changed=previous&&previous.wallet!==wallet;
   if(!previous?.enabled&&db.prepare('SELECT COUNT(*) AS n FROM subscribers WHERE enabled=1').get().n>=20)throw Error('The DM pilot is full; existing subscribers remain active');
   const preferences=previous?.preferences??defaults();
-  db.prepare(`INSERT INTO subscribers(id,wallet,preferences,enabled,consentAt,revision) VALUES (?,?,?,?,?,?)
+  db.prepare(`INSERT INTO subscribers(id,wallet,preferences,enabled,consentAt,revision,generation) VALUES (?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET wallet=excluded.wallet,preferences=excluded.preferences,enabled=1,consentAt=excluded.consentAt,revision=excluded.revision`)
-    .run(id,wallet,JSON.stringify(preferences),1,now,(previous?.revision??0)+1);
+    .run(id,wallet,JSON.stringify(preferences),1,now,(previous?.revision??0)+1,previous?.generation??randomUUID());
   if(changed)setState(db,`discovery:${id}`,null);
   suppressAll(db,id);
   return getSubscriber(db,id);
@@ -51,6 +54,10 @@ export function updatePreferences(db,id,change,registry) {
   return changed;
 }
 export function disableSubscriber(db,id) {db.prepare('UPDATE subscribers SET enabled=0 WHERE id=?').run(id);suppressAll(db,id);}
+export function currentSubscription(db,sub){
+  const current=sub&&getSubscriber(db,sub.id);
+  return current?.enabled&&current.wallet===sub.wallet&&current.revision===sub.revision&&current.generation===sub.generation?current:null;
+}
 function amount(value){if(typeof value!=='bigint'||value<0n)throw Error('Invalid position amount');return value;}
 export function lendingExposure(positions) {
   const reasons=[];

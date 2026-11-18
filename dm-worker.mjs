@@ -4,7 +4,7 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {openStore,message,getState,setState} from './engine.mjs';
-import {initSubscriptions,getSubscriber,selectedPools} from './subscriptions.mjs';
+import {initSubscriptions,getSubscriber,currentSubscription,selectedPools} from './subscriptions.mjs';
 import {collectBorrowing} from './borrow-collector.mjs';
 import {borrowingStatus} from './borrow-alerts.mjs';
 import {commandDefinition,applyCommand} from './subscription-commands.mjs';
@@ -48,7 +48,7 @@ client.on('interactionCreate',async interaction=>{
       const c=JSON.parse(readFileSync(resolve(home,'config.json'),'utf8'));
       const snapshot=JSON.parse(readFileSync(resolve(data,'latest.json'),'utf8'));
       const report=await collectBorrowing(sub,selectedPools(sub,getState(db,`discovery:${id}`,null),snapshot.observedAt),snapshot,registry,c);
-      const current=getSubscriber(db,id);if(current.wallet!==sub.wallet||current.revision!==sub.revision)throw Error('Subscription changed; run borrowing again');
+      const current=currentSubscription(db,sub);if(!current)throw Error('Subscription changed; run borrowing again');
       setState(db,`borrowing:${id}`,report);
       await privateReply(interaction,borrowingStatus(current,report,registry,report.checkedAt));return;
     }

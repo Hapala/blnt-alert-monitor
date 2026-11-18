@@ -118,3 +118,42 @@ test('pilot capacity rejects new enrolment without stopping existing subscribers
   assert.throws(()=>saveSubscriber(db,B,wallet,now),/pilot is full/);
   saveSubscriber(db,A,wallet,now);assert.equal(getSubscriber(db,A).enabled,1);db.close();
 });
+
+test('forget during successful or failed borrowing collection cannot recreate erased state, including same-wallet re-enrolment',async()=>{
+ for(const fail of [false,true])for(const resubscribe of [false,true]){
+  const db=setup();applyCommand(db,A,'capacity',{pool:P,percent:20},registry,now);
+  const original=getSubscriber(db,A);setState(db,`discovery:${A}`,{...discovery,wallet});
+  await subscriptionTick(db,{}, {observedAt:now,observations:[],markets:[],issues:[]},config,registry,undefined,async()=>({ledgerTime:now}),async()=>{
+   applyCommand(db,A,'unsubscribe',{},registry,now);applyCommand(db,A,'forget',{confirm:'DELETE'},registry,now);
+   if(resubscribe){applyCommand(db,A,'subscribe',{wallet},registry,now);applyCommand(db,A,'capacity',{pool:P,percent:20},registry,now);assert.equal(getSubscriber(db,A).revision,original.revision);assert.notEqual(getSubscriber(db,A).generation,original.generation);}
+   if(fail)throw Error('synthetic failure');
+   return {wallet,checkedAt:now,sourceObservedAt:now,pools:{}};
+  },()=>0);
+  assert.equal(getState(db,`borrowing:${A}`,null),null);
+  if(!resubscribe)assert.equal(getSubscriber(db,A),null);db.close();
+ }
+});
+
+test('forget during discovery cannot restore an erased or replaced subscription association',async()=>{
+ for(const resubscribe of [false,true]){
+  const db=setup();
+  await subscriptionTick(db,{}, {observedAt:now,observations:[],markets:[],issues:[]},config,registry,async()=>{
+   applyCommand(db,A,'unsubscribe',{},registry,now);applyCommand(db,A,'forget',{confirm:'DELETE'},registry,now);
+   if(resubscribe)applyCommand(db,A,'subscribe',{wallet},registry,now);
+   return discovery;
+  },async()=>({ledgerTime:now}),undefined,()=>0);
+  assert.equal(getState(db,`discovery:${A}`,null),null);db.close();
+ }
+});
+
+test('forget during an in-flight DM never restores receipts or delivery state',async()=>{
+ for(const fail of [false,true]){
+  const db=setup();setState(db,`discovery:${A}`,discovery);queue(db,'in-flight');
+  await deliverDms(db,{send:async()=>{
+   applyCommand(db,A,'unsubscribe',{},registry,now);applyCommand(db,A,'forget',{confirm:'DELETE'},registry,now);
+   if(fail)throw {status:429};return {messageId:'m',channelId:'d'};
+  }},A,now,registry);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM dm_receipts').get().n,0);
+  assert.equal(getState(db,`dm-delivery:${A}`,null),null);assert.equal(getSubscriber(db,A),null);db.close();
+ }
+});

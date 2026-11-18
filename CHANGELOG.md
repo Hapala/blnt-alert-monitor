@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-18 — Deletion during in-flight checks
+
+Revalidate subscription consent, revision and a unique enrolment generation after asynchronous discovery/borrowing work, including failure handlers. Confirmed deletion cannot be undone by a late result, even if the same wallet is immediately re-enrolled. Late DM results cannot recreate erased receipts or delivery state. Add regressions for successful/failed collection, discovery, re-enrolment and delivery. Existing settings remain unchanged; an already in-flight Discord request may still complete remotely.
+
 ## 2026-11-18 — Credential process isolation
 
 Separate the DM worker's Linux UID from shared/watchdog workers. Tokens remain owner-only; the existing private data is shared through a restricted group. Stopped-writer activation migrates ownership and permissions, and rollback restores prior credential access without changing settings. Add permission/rollback checks and a root-only synthetic test proving opposite credentials cannot be accessed directly or through a peer process root. Source change; deployment is separate.
