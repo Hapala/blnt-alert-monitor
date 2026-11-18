@@ -30,14 +30,21 @@ class DeploymentTests(unittest.TestCase):
    def checked(args,**kw):
     if args==['systemctl','daemon-reload'] and fail[0]:fail[0]=False;raise RuntimeError('Injected activation failure')
     return fake(args,**kw)
-   with patch.multiple(m,RUNTIME=runtime,CODE=code,OLD=root/'absent',BACKUPS=root/'backups',UNIT_DIR=units),patch.object(m,'fingerprint',return_value='tested'),patch.object(m,'active',side_effect=lambda u,legacy=False:states[u]),patch.object(m.pwd,'getpwnam',return_value=types.SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())),patch.object(m,'run',side_effect=checked),patch.object(m.subprocess,'run',side_effect=fake):
+   with patch.multiple(m,RUNTIME=runtime,CODE=code,OLD=root/'absent',BACKUPS=root/'backups',UNIT_DIR=units),patch.object(m,'fingerprint',return_value='tested'),patch.object(m,'active',side_effect=lambda u,legacy=False:states.get(u,False)),patch.object(m.pwd,'getpwnam',return_value=types.SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())),patch.object(m,'run',side_effect=checked),patch.object(m.subprocess,'run',side_effect=fake):
     initial=m.preferences(runtime)
     with self.assertRaisesRegex(RuntimeError,'preserve-owner-rules'):m.activate()
     self.assertEqual(calls,[]);self.assertTrue(all(states.values()))
     with self.assertRaisesRegex(RuntimeError,'Injected'):m.activate(preserve_owner_rules=True)
     self.assertEqual(m.preferences(runtime),initial)
-   self.assertTrue(all(states.values()));self.assertEqual((code/'current').resolve(),old)
+   self.assertTrue(all(states[u] for u in m.UNITS));self.assertEqual((code/'current').resolve(),old)
    for u,t in before.items():self.assertEqual((units/u).read_text(),t)
+   for u in m.HEALTH_UNITS:self.assertFalse((units/u).exists())
+ def test_watchdog_is_independent_isolated_and_bound_to_tested_release(self):
+  units=m.health_units(pathlib.Path('/opt/release'))
+  self.assertIn('/opt/release/health-watchdog.mjs',units[m.HEALTH_UNITS[0]])
+  self.assertIn('discord_bot_token',units[m.HEALTH_UNITS[0]])
+  self.assertIn('ProtectHome=yes',units[m.HEALTH_UNITS[0]])
+  self.assertIn('OnUnitInactiveSec=60',units[m.HEALTH_UNITS[1]])
  def test_prepare_dependency_failure_never_stops_workers(self):
   with tempfile.TemporaryDirectory(prefix='blnt-prepare-test-') as tmp:
    root=pathlib.Path(tmp);code=root/'code';runtime=root/'runtime';calls=[]

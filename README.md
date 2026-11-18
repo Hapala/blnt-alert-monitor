@@ -18,6 +18,7 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 | Borrow APR change | At least 1 percentage point up/down since the initial baseline or last rate update; one-hour cooldown per asset. Amber up, green down, with old/new APR. A gap over 15 minutes resets the baseline. High/recovery notices replace duplicate movement notices. Supply APY is not collected. |
 | Reserve added | A new asset detected in an already tracked pool. |
 | Daily report | Disabled for the shared channel; only event alerts are posted. Existing personal digest preferences are unchanged. |
+| Monitoring health | One warning after five minutes of observed degradation; one recovery after at least one minute of healthy checks. Independent local watchdog checks prices, public rates and aggregate personal-worker health about every minute. |
 
 Only verified fresh public data can trigger these rules. Public rate rules use `publicBorrowRates` in the runtime config; failure retries are bounded to five minutes. These shared rules do not enable anyone's personal borrowing alerts. Samples are labelled; normal posts contain the pool, key value and trigger, with source/time in embed metadata.
 
@@ -73,6 +74,8 @@ sudo -u blnt-alerts env BLNT_MONITOR_HOME=/var/lib/blnt-alert-monitor node /opt/
 `verify-borrowing.mjs` performs read-only current-state verification and caches personal results privately; it sends no messages and does not enable rules. `/blnt-alerts borrowing` refreshes personal results through Discord with an ephemeral response.
 
 ## Alert behavior and limits
+
+Health alerts run in `blnt-health-watchdog.timer` / `.service`, independently of the collector, using `data/health.sqlite` and the shared webhook. Only generic component names are posted. Price/personal status expires after five minutes; public-rate coverage after ten. Deliberate global pauses are quiet. A check gap over ten minutes can be reported on return. This local watchdog cannot send during a host, network or Discord outage; off-host outage detection remains outstanding. Deployment backs up health state with writers stopped and preserves an existing stopped watchdog timer.
 
 Shared posts focus on events; scheduled daily reports are disabled. Public reserve APRs are checked every five minutes with the same fixed-point rate curve as personal borrowing alerts. No wallet or subscription is needed for shared updates. Borrow APR is annualized and variable, not supply APY or a personalized charge. Changed identities, incomplete coverage and stale data suppress rate alerts. APR availability is independent of the oracle-price website cross-check. Personal rules remain off until explicitly configured; deployment preserves approved existing thresholds.
 

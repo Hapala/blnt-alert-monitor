@@ -12,6 +12,7 @@ CODE=pathlib.Path('/opt/blnt-alert-monitor')
 OLD=pathlib.Path('/home/hermes/blnt-alert-monitor')
 BACKUPS=pathlib.Path('/var/backups/blnt-alert-monitor')
 UNITS=['blnt-alert-monitor.service','blnt-dm-alerts.service']
+HEALTH_UNITS=['blnt-health-watchdog.service','blnt-health-watchdog.timer']
 UNIT_DIR=pathlib.Path('/etc/systemd/system')
 NODE='/usr/local/bin/node'
 
@@ -53,6 +54,11 @@ def unit_text(release,dm):
 def private_copy(src,dst,uid,gid):
     shutil.copy2(src,dst);os.chmod(dst,0o600);os.chown(dst,uid,gid)
 
+def health_units(release):
+    service='\n'.join(['[Unit]','Description=BLNT monitoring health alerts','','[Service]','Type=oneshot',*properties(),f'WorkingDirectory={RUNTIME}',f'ExecStart={NODE} {release}/health-watchdog.mjs',f'Environment=BLNT_MONITOR_HOME={RUNTIME}',f'Environment=BLNT_RELEASE_ID={release.name}','Environment=BLNT_PUBLISH_APPROVED=true','UMask=0077','TimeoutStartSec=100',''])
+    timer='[Unit]\nDescription=Check BLNT monitoring health every minute\n[Timer]\nOnBootSec=90\nOnUnitInactiveSec=60\nAccuracySec=5\n[Install]\nWantedBy=timers.target\n'
+    return dict(zip(HEALTH_UNITS,[service,timer]))
+
 def prune_backups():
     if not BACKUPS.exists():return
     directories=sorted((p for p in BACKUPS.iterdir() if p.is_dir() and not p.is_symlink()),key=lambda p:p.stat().st_mtime,reverse=True)
@@ -85,6 +91,7 @@ def prepare(source,browser):
     run(['runuser','-u',ACCOUNT,'--','env',f'npm_config_cache={RUNTIME}/data/npm-cache','npm','ci','--ignore-scripts','--no-audit','--no-fund'],cwd=release)
     run(['runuser','-u',ACCOUNT,'--',NODE,'cli.mjs','--check-install'],cwd=release)
     run(['runuser','-u',ACCOUNT,'--',NODE,'dm-worker.mjs','--check-install'],cwd=release)
+    run(['runuser','-u',ACCOUNT,'--',NODE,'health-watchdog.mjs','--check-install'],cwd=release)
     run(['runuser','-u',ACCOUNT,'--','npm','test'],cwd=release)
     if not (CODE/'browser/chrome').exists():
         if not browser.is_file() or browser.name!='chrome':raise RuntimeError('Installed Chromium executable required')
@@ -124,11 +131,14 @@ def activate(preserve_owner_rules=False):
     unit_paths={unit:UNIT_DIR/unit for unit in UNITS}
     saved_units={u:p.read_text() if p.exists() else None for u,p in unit_paths.items()}
     old_activation=(CODE/'activation.json').read_text() if (CODE/'activation.json').exists() else None
-    maintenance={UNIT_DIR/n:(UNIT_DIR/n).read_text() if (UNIT_DIR/n).exists() else None for n in ['blnt-alert-retention.service','blnt-alert-retention.timer']}
+    maintenance={UNIT_DIR/n:(UNIT_DIR/n).read_text() if (UNIT_DIR/n).exists() else None for n in ['blnt-alert-retention.service','blnt-alert-retention.timer',*HEALTH_UNITS]}
+    health_active=active(HEALTH_UNITS[1]);health_installed=(UNIT_DIR/HEALTH_UNITS[1]).exists()
     BACKUPS.mkdir(mode=0o700,parents=True,exist_ok=True);backup=BACKUPS/('before-'+str(int(time.time()))+'-'+uuid.uuid4().hex[:8]);backup.mkdir(mode=0o700)
     stopped=False
     try:
         stopped=True
+        for unit in reversed(HEALTH_UNITS):
+            if maintenance[UNIT_DIR/unit] is not None:run(['systemctl','stop',unit],capture_output=True)
         for unit in UNITS:
             if migration:userctl('stop',unit)
             else:run(['systemctl','stop',unit])
@@ -173,8 +183,12 @@ def activate(preserve_owner_rules=False):
         # Root-owned maintenance code cannot be modified by either alert worker.
         (UNIT_DIR/'blnt-alert-retention.service').write_text('[Unit]\nDescription=BLNT rollback backup retention\n[Service]\nType=oneshot\nExecStart=/usr/bin/python3 '+str(release/'deploy-isolated.py')+' --prune-backups\n')
         (UNIT_DIR/'blnt-alert-retention.timer').write_text('[Unit]\nDescription=Daily BLNT backup retention\n[Timer]\nOnCalendar=daily\nPersistent=true\n[Install]\nWantedBy=timers.target\n')
-        run(['systemctl','daemon-reload']);run(['systemctl','enable','--now','blnt-alert-retention.timer']);prune_backups();print(json.dumps(receipt))
+        for name,content in health_units(release).items():(UNIT_DIR/name).write_text(content)
+        run(['systemctl','daemon-reload']);run(['systemctl','enable','--now','blnt-alert-retention.timer'])
+        if health_active or not health_installed:run(['systemctl','enable','--now',HEALTH_UNITS[1]])
+        prune_backups();print(json.dumps(receipt))
     except BaseException:
+        for unit in reversed(HEALTH_UNITS):subprocess.run(['systemctl','stop',unit],capture_output=True)
         for unit in UNITS:subprocess.run(['systemctl','stop',unit],capture_output=True)
         for unit,path in unit_paths.items():
             if saved_units[unit] is None:path.unlink(missing_ok=True)
@@ -188,6 +202,7 @@ def activate(preserve_owner_rules=False):
             current=CODE/'current';current.unlink(missing_ok=True)
             if old_current is not None:current.symlink_to(old_current)
         subprocess.run(['systemctl','daemon-reload'],capture_output=True)
+        if health_active:subprocess.run(['systemctl','start',HEALTH_UNITS[1]],capture_output=True)
         if stopped:
             # Schema migrations here are additive; preserve any preferences changed
             # while candidate workers were active rather than restoring an old DB.
