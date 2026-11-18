@@ -7,7 +7,8 @@ export function validateWebhook(url) {
   return parsed.href;
 }
 export async function verifyWebhookTarget(secret,target,fetcher=fetch) {
-  if(target?.audience!=='private'||!/^\d+$/.test(target.channelId??'')||!/^\d+$/.test(target.guildId??''))throw Error('Private Discord target configuration required');
+  // Accept the former label during upgrades; it never proved channel privacy.
+  if(!['shared','private'].includes(target?.audience)||!/^\d+$/.test(target.channelId??'')||!/^\d+$/.test(target.guildId??''))throw Error('Shared Discord channel target configuration required');
   const url=new URL(validateWebhook(secret));url.search='';
   let response;
   try {response=await fetcher(url.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(15000)});}

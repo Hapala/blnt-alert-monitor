@@ -1,6 +1,6 @@
 # Dedicated BLNT Alerts Discord application
 
-The user authorized moving alert commands and personal messages to a separate **BLNT Alerts** bot on November 15, 2026. The personal OpenClaw bot remains private. The shared-channel webhook uses the BLNT Alerts identity and remains the shared-update transport. The subsequent request for a server-visible shared channel supersedes the initial private-channel policy; current implementation gaps are recorded in SYSTEM_SPEC.md.
+The dedicated **BLNT Alerts** bot owns alert commands and personal DMs. The personal OpenClaw bot remains private. Shared updates use the BLNT Alerts webhook in #price-alerts, visible to BLNT Trade members. Its canonical routing label is `audience:shared`; this metadata does not configure channel permissions.
 
 ## Identity and permissions
 
@@ -24,4 +24,4 @@ Immutable releases live under `/opt/blnt-alert-monitor/releases`; runtime config
 6. Verify personal OpenClaw's Discord DM and guild sender policies restrict the default personal account to the owner. Other configured bot accounts remain unchanged. Treat stored pairing approvals as part of the effective access list.
 7. Verify the new bot exposes only alert commands, is never loaded into OpenClaw, and its process cannot read personal OpenClaw files. Record identity and delivery evidence without printing credentials.
 
-The user's later channel-visibility decision supersedes the original private shared-channel trial. Preserve opt-in DMs and personal data privacy while aligning shared-channel labels/configuration with that decision. Update the pinned command guide when commands or requirements change. See SYSTEM_SPEC.md for accepted requirements and outstanding alignment work.
+Preserve the shared channel's server-member visibility and opt-in personal DMs. Update the pinned command guide when commands or requirements change. See SYSTEM_SPEC.md for accepted requirements and remaining operational work.

@@ -1,8 +1,8 @@
 {
-  "guildId": "REPLACE_WITH_PRIVATE_GUILD_ID",
-  "channelId": "REPLACE_WITH_PRIVATE_CHANNEL_ID",
+  "guildId": "REPLACE_WITH_GUILD_ID",
+  "channelId": "REPLACE_WITH_SHARED_CHANNEL_ID",
   "channelName": "price-alerts",
   "webhookName": "BLNT Alerts",
-  "audience": "private",
-  "privacyVerification": "Verify that @everyone cannot view this channel before enabling posting."
+  "audience": "shared",
+  "visibilityVerification": "Verify the intended BLNT Trade member visibility in Discord. Personal alerts stay in DMs; this metadata does not set channel permissions."
 }

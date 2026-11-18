@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-18 — Shared-channel wording cleanup
+
+Use `audience:shared` for the shared webhook target. The historical `private` label remains accepted for safe upgrades, with identical destination verification; neither label changes Discord permissions. Examples and current guides use the shared-channel policy, while personal messages stay in DMs. Removed private-trial prefixes from new subscription and DM-test messages. Preserved the historical sample deduplication ID to prevent reposts. The channel topic now describes event-only updates and personal DMs, without the old daily-report promise.
+
 ## 2026-11-17 — Monitoring and pool-condition alerts
 
 Implemented and deployed as three separately reviewed changes:

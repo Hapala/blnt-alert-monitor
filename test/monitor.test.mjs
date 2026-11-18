@@ -68,15 +68,24 @@ test('market identity uses same-origin contract IDs and rejects lookalike sites'
 });
 const webhook='https://discord.com/api/webhooks/123456/test_token';
 test('destination verification rejects a webhook for a different channel',async()=>{
-  const target={audience:'private',channelId:'123',guildId:'456',webhookName:'BLNT Alerts'};
+  const target={audience:'shared',channelId:'123',guildId:'456',webhookName:'BLNT Alerts'};
   const metadata={type:1,id:'789',channel_id:'123',guild_id:'456',name:'BLNT Alerts'};
   const fetcher=async(_url,request)=>{assert.equal(request.method,'GET');return {ok:true,json:async()=>metadata};};
   assert.equal((await verifyWebhookTarget(webhook,target,fetcher)).channelId,'123');
+  assert.equal((await verifyWebhookTarget(webhook,{...target,audience:'private'},fetcher)).channelId,'123');
   metadata.channel_id='999';await assert.rejects(()=>verifyWebhookTarget(webhook,target,fetcher),/mismatch/);
-  await assert.rejects(()=>verifyWebhookTarget(webhook,{...target,audience:'public'},fetcher),/Private/);
+  await assert.rejects(()=>verifyWebhookTarget(webhook,{...target,audience:'private'},fetcher),/mismatch/);
+  metadata.channel_id='123';
+  for(const field of ['guild_id','name','type']){
+    const before=metadata[field];metadata[field]=field==='type'?2:'wrong';
+    for(const audience of ['shared','private'])await assert.rejects(()=>verifyWebhookTarget(webhook,{...target,audience},fetcher),/mismatch/);
+    metadata[field]=before;
+  }
+  await assert.rejects(()=>verifyWebhookTarget(webhook,{...target,audience:'public'},fetcher),/Shared/);
+  await assert.rejects(()=>verifyWebhookTarget(webhook,{...target,audience:'personal'},fetcher),/Shared/);
 });
 test('destination verification never reveals credential-bearing network errors',async()=>{
-  const target={audience:'private',channelId:'123',guildId:'456',webhookName:'BLNT Alerts'};
+  const target={audience:'shared',channelId:'123',guildId:'456',webhookName:'BLNT Alerts'};
   await assert.rejects(()=>verifyWebhookTarget(webhook,target,async()=>{throw Error(webhook);}),error=>!error.message.includes('test_token'));
 });
 test('webhook is restricted to Discord HTTPS and disables mentions',()=>{

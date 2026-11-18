@@ -54,7 +54,7 @@ client.on('interactionCreate',async interaction=>{
     }
     const result=applyCommand(db,id,name,args,registry,now);
     if(result==='test') {
-      await api.send(id,message('[PRIVATE TRIAL] BLNT DM delivery test','This is your requested delivery test. No market threshold is asserted. Your subscription settings are managed with /blnt-alerts.'));
+      await api.send(id,message('[TEST] BLNT Alerts','Requested delivery test. No alert rule was triggered.'));
       await interaction.editReply('Your DM delivery test was sent.');
     }else await privateReply(interaction,result);
   }catch(error){

@@ -2,7 +2,7 @@
 
 Self-hosted pool monitoring and opt-in Discord alerts for BLNT.trade. Prices come from the pinned pool oracles through hosted public Stellar RPC providers. The website is a cross-check. This repository does not run or use a private/local RPC, sign transactions, or trade.
 
-Shared updates use a channel webhook. The latest user decision is a channel visible to BLNT Trade server members; alignment of legacy private-trial labels/configuration is tracked in [SYSTEM_SPEC.md](SYSTEM_SPEC.md). Personal alerts use verified one-to-one bot DMs, with wallet-based pool discovery, optional extra pools, category/pool mutes, pause, snooze and unsubscribe. Borrowing-capacity and borrow-APR thresholds are customizable per pool and default off.
+Shared updates use a channel webhook in #price-alerts, visible to BLNT Trade server members. Personal alerts use verified one-to-one bot DMs, with wallet-based pool discovery, optional extra pools, category/pool mutes, pause, snooze and unsubscribe. Borrowing-capacity and borrow-APR thresholds are customizable per pool and default off.
 
 - [Agent workflow and review instructions](AGENTS.md)
 - [System requirements, acceptance checks and known gaps](SYSTEM_SPEC.md)
@@ -47,7 +47,7 @@ Only network/health checks, ledger reads and unsigned simulations of allowlisted
 
 ## Configure and run
 
-The checked-in `config.json` is a dry-run template. Runtime destination IDs and credentials remain private operator configuration. Verify actual channel permissions in Discord: webhook metadata confirms routing, not privacy. The source currently has a legacy private-audience declaration; see the explicit visibility-alignment gap in SYSTEM_SPEC.md before changing that declaration. Do not restore a private channel contrary to the latest user decision.
+The checked-in `config.json` is a dry-run template. Runtime destination IDs and credentials remain private operator configuration. Use `audience:shared` in `discord-target.json`; the former `private` label remains accepted for upgrade compatibility. Both labels require the same pinned server/channel/webhook binding and neither sets Discord permissions. Verify actual channel visibility in Discord; personal alerts stay in DMs.
 
 The shared webhook URL belongs in `secrets/discord_webhook`, directory mode 0700, file mode 0600. The DM worker uses a separate BLNT Alerts bot. Its token belongs in `secrets/discord_bot_token` (0600); copy `discord-bot.example.json` to the ignored runtime `discord-bot.json` to pin its application and guild IDs. There is no OpenClaw credential fallback. Never commit credentials. Install the bot in the intended server with only bot/application-command scopes and zero requested server permissions. It needs no privileged gateway intents and reads no message content. See DEDICATED_BOT.md for migration and service isolation.
 

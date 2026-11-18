@@ -1,6 +1,6 @@
 # Personal borrowing-capacity and APR alerts
 
-Implemented November 15, 2026. **All new rules default off. Michael explicitly chose to leave them off until selecting thresholds.** Existing price alerts, subscriptions, mutes and the private shared channel continue independently.
+**New rules default off until the subscriber chooses thresholds.** Deployments preserve existing approved settings. Shared event alerts in the server-visible #price-alerts channel run independently; personal borrowing alerts stay in DMs.
 
 In your DM with **BLNT Alerts**, select the pool choice in Discord's command picker:
 

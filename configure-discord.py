@@ -19,7 +19,7 @@ def main():
         hook = json.load(response)
     if (hook.get('channel_id') != target['channelId'] or hook.get('guild_id') != target['guildId']
             or hook.get('name') != target['webhookName'] or hook.get('type') != 1):
-        raise ValueError('Webhook destination does not match the private alert channel')
+        raise ValueError('Webhook destination does not match the configured alert channel')
     secret_dir = destination / 'secrets'
     secret_dir.mkdir(mode=0o700, exist_ok=True)
     secret_dir.chmod(0o700)

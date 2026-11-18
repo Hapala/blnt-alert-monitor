@@ -149,6 +149,7 @@ export function processSnapshot(db, snapshot, c) {
     }
     if(c.mode==='live'&&c.trial) {
       const o=snapshot.observations.find(o=>o.alertEligible&&o.priceExact);
+      // Preserve the historic deduplication ID so cleanup does not repost a sample.
       if(o)queue(`${snapshot.source}:private-trial:format-preview:v1`,
         message('[SAMPLE] Price alert',
           `Sample — no price-movement threshold triggered.\n**${o.poolName} · ${o.symbol}** ${o.priceExact} ${o.quote}`),'format_preview',o.pool);

@@ -122,7 +122,7 @@ export function processSubscriber(db,sub,discovery,snapshot,config,registry) {
   if(discovery&&!sub.preferences.mutedCategories.includes('subscription_status')&&!Object.values(discovery.pools).some(p=>p.stale)) {
     const names=pools.map(id=>registry.pools.find(p=>p.id===id)?.name??id);
     enqueue(db,`subscriber:${sub.id}:subscription-status:${sub.revision}`,snapshot.observedAt,
-      message('[PRIVATE TRIAL] Your BLNT subscription',`Following: ${names.join(', ')||'no active pools found'}.\nAutomatic wallet discovery plus optional extra pools, with pool/category mutes applied.\nManage with /blnt-alerts status, pools, add-pool, mute, pause or unsubscribe.\nNo wallet keys or transaction signing are used.`),config.mode,
+      message('Your BLNT subscription',`Following: ${names.join(', ')||'no active pools found'}.\nAutomatic wallet discovery plus optional extra pools, with pool/category mutes applied.\nManage with /blnt-alerts status, pools, add-pool, mute, pause or unsubscribe.\nNo wallet keys or transaction signing are used.`),config.mode,
       {audience:sub.id,category:'subscription_status'});
   }
 }
