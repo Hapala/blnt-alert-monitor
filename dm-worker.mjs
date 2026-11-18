@@ -29,7 +29,7 @@ api.guildId=botTarget.guildId;
 const gate=new CommandGate();
 const client=new Client({intents:[],allowedMentions:{parse:[]}});
 let stopping=false;
-const status=value=>{writeFileSync(resolve(data,'dm-status.json.tmp'),JSON.stringify({releaseId:process.env.BLNT_RELEASE_ID??'development',...value},null,2)+'\n',{mode:0o600});renameSync(resolve(data,'dm-status.json.tmp'),resolve(data,'dm-status.json'));};
+const status=value=>{writeFileSync(resolve(data,'dm-status.json.tmp'),JSON.stringify({releaseId:process.env.BLNT_RELEASE_ID??'development',...value},null,2)+'\n',{mode:0o660});renameSync(resolve(data,'dm-status.json.tmp'),resolve(data,'dm-status.json'));};
 client.on('error',()=>console.error('DM gateway connection error; credential not displayed'));
 client.on('interactionCreate',async interaction=>{
   if(!interaction.isChatInputCommand()||interaction.commandName!=='blnt-alerts')return;

@@ -36,7 +36,7 @@ process.on('SIGINT',stop); process.on('SIGTERM',stop);
 const db = openStore(resolve(data,'monitor.sqlite'));
 if(!getState(db,'lastMode',null)) setState(db,'lastMode','dry-run');
 function atomicJson(path, value) {
-  writeFileSync(`${path}.tmp`, JSON.stringify(value,null,2)+'\n',{mode:0o600}); renameSync(`${path}.tmp`,path);
+  writeFileSync(`${path}.tmp`, JSON.stringify(value,null,2)+'\n',{mode:0o660}); renameSync(`${path}.tmp`,path);
 }
 function config() {
   const c = JSON.parse(readFileSync(resolve(home,'config.json'),'utf8'));

@@ -7,6 +7,7 @@ No OpenClaw configuration or credentials are copied or modified.
 import argparse,hashlib,json,os,pathlib,pwd,shutil,sqlite3,subprocess,time,uuid
 
 ACCOUNT='blnt-alerts'
+DM_ACCOUNT='blnt-alert-dm'
 RUNTIME=pathlib.Path('/var/lib/blnt-alert-monitor')
 CODE=pathlib.Path('/opt/blnt-alert-monitor')
 OLD=pathlib.Path('/home/hermes/blnt-alert-monitor')
@@ -42,17 +43,56 @@ def preferences(root):
     return {'digest':hashlib.sha256(json.dumps(rows).encode()).hexdigest(),'borrowingRulesEnabled':enabled,'ownerBorrowingRulesEnabled':owner}
 
 def properties(dm=False):
-    return [f'User={ACCOUNT}',f'Group={ACCOUNT}','NoNewPrivileges=yes','ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes','PrivateDevices=yes','ProtectProc=invisible','ProtectKernelTunables=yes','ProtectKernelModules=yes','ProtectControlGroups=yes','RestrictSUIDSGID=yes','LockPersonality=yes','CapabilityBoundingSet=',f'ReadWritePaths={RUNTIME}/data',
+    return [f'User={DM_ACCOUNT if dm else ACCOUNT}',f'Group={ACCOUNT}','NoNewPrivileges=yes','ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes','PrivateDevices=yes','ProtectProc=invisible','ProtectKernelTunables=yes','ProtectKernelModules=yes','ProtectControlGroups=yes','RestrictSUIDSGID=yes','LockPersonality=yes','CapabilityBoundingSet=',f'ReadWritePaths={RUNTIME}/data',
             'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6',
             'TemporaryFileSystem=/mnt:ro',f'BindReadOnlyPaths={CODE}/resolv.conf:/mnt/wsl/resolv.conf',
             f'InaccessiblePaths=-/media -{RUNTIME}/secrets/'+('discord_webhook' if dm else 'discord_bot_token')]
 
 def unit_text(release,dm):
     entry='dm-worker.mjs' if dm else 'cli.mjs'
-    return '\n'.join(['[Unit]','Description=Isolated BLNT '+('personal alerts' if dm else 'shared monitoring'),'After=network-online.target','Wants=network-online.target','','[Service]','Type=simple',*properties(dm),f'WorkingDirectory={RUNTIME}',f'ExecStart={NODE} {release}/{entry}',f'Environment=BLNT_RELEASE_ID={release.name}',f'Environment=BLNT_MONITOR_HOME={RUNTIME}',f'Environment=BLNT_BROWSER_PATH={CODE}/browser/chrome',f'Environment=XDG_CONFIG_HOME={RUNTIME}/data/browser-config',f'Environment=XDG_CACHE_HOME={RUNTIME}/data/browser-cache','Environment=BLNT_PUBLISH_APPROVED=true','ExecStartPre=/usr/bin/test ! -r /home/hermes/.openclaw/openclaw.json','UMask=0077','Restart=on-failure','RestartSec=30','TimeoutStopSec=150','MemoryMax='+('512M' if dm else '1G'),'CPUQuota='+('50%' if dm else '100%'),'','[Install]','WantedBy=multi-user.target',''])
+    return '\n'.join(['[Unit]','Description=Isolated BLNT '+('personal alerts' if dm else 'shared monitoring'),'After=network-online.target','Wants=network-online.target','','[Service]','Type=simple',*properties(dm),f'WorkingDirectory={RUNTIME}',f'ExecStart={NODE} {release}/{entry}',f'Environment=BLNT_RELEASE_ID={release.name}',f'Environment=BLNT_MONITOR_HOME={RUNTIME}',f'Environment=BLNT_BROWSER_PATH={CODE}/browser/chrome',f'Environment=XDG_CONFIG_HOME={RUNTIME}/data/browser-config',f'Environment=XDG_CACHE_HOME={RUNTIME}/data/browser-cache','Environment=BLNT_PUBLISH_APPROVED=true','ExecStartPre=/usr/bin/test ! -r /home/hermes/.openclaw/openclaw.json','UMask=0007','Restart=on-failure','RestartSec=30','TimeoutStopSec=150','MemoryMax='+('512M' if dm else '1G'),'CPUQuota='+('50%' if dm else '100%'),'','[Install]','WantedBy=multi-user.target',''])
 
 def private_copy(src,dst,uid,gid):
     shutil.copy2(src,dst);os.chmod(dst,0o600);os.chown(dst,uid,gid)
+
+def worker_access(shared,personal):
+    """Called only with writers stopped. Shared data stays private to the group."""
+    if shared.pw_uid==personal.pw_uid:raise RuntimeError('Worker UIDs must differ')
+    for name in ['config.json','discord-target.json','discord-bot.json']:
+        path=RUNTIME/name
+        if path.is_symlink():raise RuntimeError('Symlink in managed configuration')
+        if path.exists():os.chown(path,0,shared.pw_gid);os.chmod(path,0o640)
+    secrets=RUNTIME/'secrets'
+    if secrets.is_symlink():raise RuntimeError('Symlink in managed credentials')
+    if secrets.exists():
+        os.chown(secrets,0,shared.pw_gid);os.chmod(secrets,0o710)
+        for name,owner in [('discord_webhook',shared),('discord_bot_token',personal)]:
+            path=secrets/name
+            if path.is_symlink():raise RuntimeError('Symlink in managed credential')
+            if path.exists():os.chown(path,owner.pw_uid,shared.pw_gid);os.chmod(path,0o600)
+    for path in [RUNTIME/'data',*(RUNTIME/'data').rglob('*')]:
+        if path.is_symlink():raise RuntimeError('Symlink in managed data')
+        os.chown(path,shared.pw_uid,shared.pw_gid);os.chmod(path,0o2770 if path.is_dir() else 0o660)
+
+def access_snapshot():
+    paths=[RUNTIME/n for n in ['config.json','discord-target.json','discord-bot.json','secrets','secrets/discord_webhook','secrets/discord_bot_token']]
+    if any(p.is_symlink() for p in paths):raise RuntimeError('Symlink in managed access metadata')
+    return [(p,p.stat().st_uid,p.stat().st_gid,p.stat().st_mode&0o7777) for p in paths if p.exists()]
+
+def restore_access(saved,shared):
+    for path,uid,gid,mode in saved:
+        if path.exists():os.chown(path,uid,gid);os.chmod(path,mode)
+    # Candidate-created data must also remain accessible to the previous UID.
+    for path in [RUNTIME/'data',*(RUNTIME/'data').rglob('*')]:
+        if not path.is_symlink():os.chown(path,shared.pw_uid,shared.pw_gid)
+
+def check_credentials():
+    for dm in [False,True]:
+        own,other=('discord_bot_token','discord_webhook') if dm else ('discord_webhook','discord_bot_token')
+        args=['systemd-run','--wait','--pipe','--collect','--unit','blnt-credential-check-'+uuid.uuid4().hex[:8]]
+        for prop in properties(dm):args+=['--property',prop]
+        code=f'import os; assert os.access({str(RUNTIME/"secrets"/own)!r},os.R_OK); assert not os.access({str(RUNTIME/"secrets"/other)!r},os.R_OK); print("Worker credential access verified")'
+        run([*args,'/usr/bin/python3','-c',code])
 
 def health_units(release):
     service='\n'.join(['[Unit]','Description=BLNT monitoring health alerts','','[Service]','Type=oneshot',*properties(),f'WorkingDirectory={RUNTIME}',f'ExecStart={NODE} {release}/health-watchdog.mjs',f'Environment=BLNT_MONITOR_HOME={RUNTIME}',f'Environment=BLNT_RELEASE_ID={release.name}','Environment=BLNT_PUBLISH_APPROVED=true','UMask=0077','TimeoutStartSec=100',''])
@@ -76,6 +116,8 @@ def prepare(source,browser):
     try:account=pwd.getpwnam(ACCOUNT)
     except KeyError:
         run(['useradd','--system','--user-group','--home-dir',RUNTIME,'--shell','/usr/sbin/nologin',ACCOUNT]);account=pwd.getpwnam(ACCOUNT)
+    try:pwd.getpwnam(DM_ACCOUNT)
+    except KeyError:run(['useradd','--system','--no-create-home','--gid',ACCOUNT,'--home-dir',RUNTIME,'--shell','/usr/sbin/nologin',DM_ACCOUNT])
     if RUNTIME.exists() and not (RUNTIME/'.blnt-monitor-managed').exists():raise RuntimeError('Refusing unmanaged runtime')
     RUNTIME.mkdir(mode=0o750,exist_ok=True);os.chown(RUNTIME,0,account.pw_gid)
     (RUNTIME/'.blnt-monitor-managed').touch(mode=0o600)
@@ -134,7 +176,7 @@ def activate(preserve_owner_rules=False):
     maintenance={UNIT_DIR/n:(UNIT_DIR/n).read_text() if (UNIT_DIR/n).exists() else None for n in ['blnt-alert-retention.service','blnt-alert-retention.timer',*HEALTH_UNITS]}
     health_active=active(HEALTH_UNITS[1]);health_installed=(UNIT_DIR/HEALTH_UNITS[1]).exists()
     BACKUPS.mkdir(mode=0o700,parents=True,exist_ok=True);backup=BACKUPS/('before-'+str(int(time.time()))+'-'+uuid.uuid4().hex[:8]);backup.mkdir(mode=0o700)
-    stopped=False
+    stopped=False;saved_access=[]
     try:
         stopped=True
         for unit in reversed(HEALTH_UNITS):
@@ -143,6 +185,7 @@ def activate(preserve_owner_rules=False):
             if migration:userctl('stop',unit)
             else:run(['systemctl','stop',unit])
         shutil.copytree(source/'data',backup/'data')
+        saved_access=access_snapshot()
         if migration:
             for name in ['config.json','discord-target.json','discord-bot.json']:
                 private_copy(source/name,RUNTIME/name,account.pw_uid,account.pw_gid)
@@ -150,6 +193,8 @@ def activate(preserve_owner_rules=False):
             for name in ['discord_webhook','discord_bot_token']:private_copy(source/'secrets'/name,secrets/name,account.pw_uid,account.pw_gid)
             shutil.copytree(source/'data',RUNTIME/'data',dirs_exist_ok=True)
             for p in [RUNTIME/'data',*(RUNTIME/'data').rglob('*')]:os.chown(p,account.pw_uid,account.pw_gid)
+        worker_access(account,pwd.getpwnam(DM_ACCOUNT))
+        check_credentials()
         current=CODE/'current';old_current=os.readlink(current) if current.is_symlink() else None
         backup.joinpath('prior.json').write_text(json.dumps({'units':saved_units,'current':old_current,'priorStates':prior,'migration':migration}))
         pending=CODE/'current.pending';pending.unlink(missing_ok=True);pending.symlink_to(release);os.replace(pending,current)
@@ -204,6 +249,7 @@ def activate(preserve_owner_rules=False):
         subprocess.run(['systemctl','daemon-reload'],capture_output=True)
         if health_active:subprocess.run(['systemctl','start',HEALTH_UNITS[1]],capture_output=True)
         if stopped:
+            restore_access(saved_access,account)
             # Schema migrations here are additive; preserve any preferences changed
             # while candidate workers were active rather than restoring an old DB.
             if migration and (RUNTIME/'data/monitor.sqlite').exists():
