@@ -3,7 +3,7 @@ import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,getState} from './engine.mjs';
-import {monitoringIssues,processMonitoringHealth} from './health-alerts.mjs';
+import {monitoringClock,monitoringIssues,processMonitoringHealth} from './health-alerts.mjs';
 import {verifyWebhookTarget,deliver} from './webhook.mjs';
 import {liquiditySettings} from './liquidity-alerts.mjs';
 if(process.argv.includes('--check-install')){console.log('Health watchdog imports verified');process.exit(0);}
@@ -12,7 +12,7 @@ const json=path=>{try{return JSON.parse(readFileSync(resolve(home,path)));}catch
 const config=json('config.json');
 if(!['live','dry-run'].includes(config.mode))throw Error('Invalid watchdog mode');
 if(config.mode==='live'&&process.env.BLNT_PUBLISH_APPROVED!=='true')throw Error('Health publishing approval required');
-const now=Math.floor(Date.now()/1000),registry=JSON.parse(readFileSync(new URL('./markets.json',import.meta.url)));
+const now=monitoringClock(json('data/latest.json'),Math.floor(Date.now()/1000)),registry=JSON.parse(readFileSync(new URL('./markets.json',import.meta.url)));
 let rates,source;
 try{source=new DatabaseSync(resolve(home,'data/monitor.sqlite'),{readOnly:true});rates=getState(source,'publicBorrowRates',null);}catch{}finally{source?.close();}
 const issues=monitoringIssues({now,shared:json('data/status.json'),personal:json('data/dm-status.json'),rates,expectedPools:registry.pools.map(p=>p.id),ratesEnabled:Boolean(config.publicBorrowRates?.enabled||liquiditySettings(config))});

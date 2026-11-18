@@ -1,5 +1,11 @@
 import {getState,setState,enqueue,message} from './engine.mjs';
 
+export function monitoringClock(snapshot,hostNow){
+  const ledger=snapshot?.observedAt,captured=snapshot?.hostObservedAt;
+  if(Number.isFinite(ledger)&&Number.isFinite(captured))return ledger+Math.max(0,hostNow-captured);
+  return hostNow;
+}
+
 export function monitoringIssues({shared={},personal={},rates,expectedPools=[],now,ratesEnabled=true}){
   const fresh=(t,age)=>Number.isFinite(t)&&now-t>=-15&&now-t<=age;
   const issues=[];

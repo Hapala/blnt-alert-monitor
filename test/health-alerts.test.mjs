@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openStore} from '../engine.mjs';
-import {monitoringIssues,processMonitoringHealth} from '../health-alerts.mjs';
+import {monitoringClock,monitoringIssues,processMonitoringHealth} from '../health-alerts.mjs';
 const now=1800000000,c={mode:'live'},rows=db=>db.prepare('SELECT * FROM outbox ORDER BY created').all();
 const tick=(db,t,issues=[],paused=false)=>processMonitoringHealth(db,{now:t,issues,paused},c);
+test('health clock stays aligned with ledger timestamps under host offsets and detects stopped updates',()=>{
+ for(const offset of [-3600,0,3600]){
+  const snapshot={observedAt:now,hostObservedAt:now+offset};
+  assert.equal(monitoringClock(snapshot,now+offset+60),now+60);
+  assert.equal(monitoringClock(snapshot,now+offset+601),now+601);
+ }
+ assert.equal(monitoringClock({observedAt:now+60,hostObservedAt:now+3660},now+3660),now+60);
+ assert.equal(monitoringClock({},now),now);
+});
 test('health checks include freshness, failed cycles and complete public-rate coverage without leaking diagnostics',()=>{
  const good={now,shared:{ready:true,observedAt:now},personal:{active:true,failures:0,heartbeatAt:now,sourceObservedAt:now},rates:{checkedAt:now,pools:[{id:'p',available:true}]},expectedPools:['p']};
  assert.deepEqual(monitoringIssues(good),[]);
