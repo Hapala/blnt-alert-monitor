@@ -19,6 +19,7 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 | Reserve added | A new asset detected in an already tracked pool. |
 | Daily report | Disabled for the shared channel; only event alerts are posted. Existing personal digest preferences are unchanged. |
 | Monitoring health | One warning after five minutes of observed degradation; one recovery after at least one minute of healthy checks. Independent local watchdog checks prices, public rates and aggregate personal-worker health about every minute. |
+| Pool status | Changes to the pinned on-chain pool status, with old/new labels and borrowing/supply restrictions. Initial baseline is silent; unknown or missing status suppresses unsent alerts. |
 
 Only verified fresh public data can trigger these rules. Public rate rules use `publicBorrowRates` in the runtime config; failure retries are bounded to five minutes. These shared rules do not enable anyone's personal borrowing alerts. Samples are labelled; normal posts contain the pool, key value and trigger, with source/time in embed metadata.
 

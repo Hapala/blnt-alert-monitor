@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {PublicRpc,selectProvider,symbolKey,reserveConfigKey,oracleAsset} from './public-rpc.mjs';
+import {poolStatus} from './pool-status-alerts.mjs';
 
 export const SOURCE='pool-oracles-public-rpc-v1';
 export function exactPrice(raw,decimals) {
@@ -33,7 +34,8 @@ export class OracleCollector {
         const quote=await rpc.getter(pool.oracle,'base'),decimals=Number(await rpc.getter(pool.oracle,'decimals'));
         if(JSON.stringify(quote)!==JSON.stringify(pool.quote))throw Error('Oracle quote currency changed');
         if(!Number.isInteger(decimals)||decimals<0||decimals>18)throw Error('Invalid oracle decimals');
-        markets.push({id:pool.id,name:pool.name,oracle:pool.oracle,reserves,quote:pool.quoteLabel,sourceUrl:pool.evidenceUrl});
+        const status=poolStatus(instance.storage.Config.status);
+        markets.push({id:pool.id,name:pool.name,status,oracle:pool.oracle,reserves,quote:pool.quoteLabel,sourceUrl:pool.evidenceUrl});
         for(const asset of reserves) {
           try {
             if((await rpc.data(pool.id,reserveConfigKey(asset))).enabled!==true)throw Error('Reserve disabled');

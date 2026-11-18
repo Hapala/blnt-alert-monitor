@@ -8,6 +8,7 @@ import {compareWebsite,applyCrossCheck} from './cross-check.mjs';
 import {openStore, getState, setState,dailyDigestSlot,priceAlertSettings} from './engine.mjs';
 import {collectPublicRates} from './borrow-collector.mjs';
 import {publicRateSettings,publicRatesDue,processPublicRateAlerts} from './public-rate-alerts.mjs';
+import {processPoolStatuses} from './pool-status-alerts.mjs';
 import {deliver,verifyWebhookTarget} from './webhook.mjs';
 import {prunePersonal} from './retention.mjs';
 if(process.argv.includes('--check-install')){console.log('Shared entry point imports verified');process.exit(0);}
@@ -96,6 +97,7 @@ try {
         if(stopping)break;
         const {processSnapshot} = await import('./engine.mjs');
         processSnapshot(db,snapshot,c);
+        processPoolStatuses(db,snapshot,c);
         processPublicRateAlerts(db,snapshot,c);
         prunePersonal(db);
         atomicJson(resolve(data,'latest.json'),snapshot);

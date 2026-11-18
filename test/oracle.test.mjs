@@ -57,3 +57,12 @@ test('missing cross-check suppresses price alerts while retaining oracle history
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM samples').get().n,13);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE id LIKE '%:alert:%'").get().n,0);db.close();
 });
+test('oracle collector exposes only pinned, recognized pool statuses and rejects future status codes',async()=>{
+ const asset='CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA';let status=1,calls=0;
+ const registry={pools:[{id:'p',name:'Pool',oracle:'o',wasmHash:'expected',oracleWasmHash:'expected',quote:['Other','USD'],quoteLabel:'USD'}],symbols:{[asset]:'XLM'}};
+ const rpc={url:PUBLIC_PROVIDERS[0],instance:async()=>({hash:'expected',storage:{Config:{oracle:'o',status}}}),
+ data:async()=>++calls%2?[asset]:{enabled:true},getter:async(_id,method)=>method==='base'?['Other','USD']:method==='decimals'?7n:{price:10000000n,timestamp:1000n},health:async()=>({ledger:100,ledgerTime:1000})};
+ const collector=new OracleCollector(registry,async()=>({rpc,ledger:100,ledgerTime:1000,reference:{}}));
+ const valid=await collector.collect(config);assert.equal(valid.markets[0].status,1);assert.equal(valid.observations.length,1);
+ status=7;calls=0;const invalid=await collector.collect(config);assert.equal(invalid.markets.length,0);assert.equal(invalid.observations.length,0);assert.match(invalid.issues[0].reason,/Unknown pool status/);
+});
