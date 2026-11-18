@@ -13,6 +13,7 @@ function fixture(){
 }
 test('public APR collection uses reserve-only getters and rejects stale, changed and incomplete pool data',async()=>{
  const f=fixture();let result=await f.collect();assert.equal(result.pools[0].rates[0].aprPercent,'6');assert.equal(result.pools[0].available,true);assert.equal(result.wallet,undefined);
+ assert.equal(result.pools[0].rates[0].liquidity.unborrowedRaw,'250000000');assert.equal(result.pools[0].rates[0].liquidity.utilizationRaw,'7500000');
  f.reserve.config.enabled=false;result=await f.collect();assert.deepEqual(result.pools[0].rates,[]);assert.equal(result.pools[0].disabledReserves,1);
  f.reserve.data.last_time=BigInt(now-1000);assert.equal((await f.collect()).pools[0].available,false);
  f.reserve.data.last_time=BigInt(now);f.reserve.asset=registry.pools[0].id;assert.equal((await f.collect()).pools[0].available,false);

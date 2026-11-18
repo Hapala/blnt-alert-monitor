@@ -8,6 +8,7 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 - [System requirements, acceptance checks and known gaps](SYSTEM_SPEC.md)
 - [Personal subscriptions and operations](DM_SUBSCRIPTIONS.md)
 - [Borrowing-capacity definitions and threshold commands](BORROWING_ALERTS.md)
+- [Public pool-status and liquidity alerts](POOL_ALERTS.md)
 
 ## Shared alerts
 
@@ -20,6 +21,7 @@ Shared updates use a channel webhook. The latest user decision is a channel visi
 | Daily report | Disabled for the shared channel; only event alerts are posted. Existing personal digest preferences are unchanged. |
 | Monitoring health | One warning after five minutes of observed degradation; one recovery after at least one minute of healthy checks. Independent local watchdog checks prices, public rates and aggregate personal-worker health about every minute. |
 | Pool status | Changes to the pinned on-chain pool status, with old/new labels and borrowing/supply restrictions. Initial baseline is silent; unknown or missing status suppresses unsent alerts. |
+| Liquidity | Warn at 90% of supplied balance borrowed, escalate at 95%, recover at 85% or below. Six-hour warning cooldown per asset; one escalation per episode. Uses existing five-minute reserve reads. Unborrowed supply is an estimate, not guaranteed cash available to withdraw. |
 
 Only verified fresh public data can trigger these rules. Public rate rules use `publicBorrowRates` in the runtime config; failure retries are bounded to five minutes. These shared rules do not enable anyone's personal borrowing alerts. Samples are labelled; normal posts contain the pool, key value and trigger, with source/time in embed metadata.
 

@@ -29,6 +29,13 @@
     "changeAprPoints": "1",
     "changeCooldownSeconds": 3600
   },
+  "liquidityAlerts": {
+    "enabled": true,
+    "warningPercent": "90",
+    "criticalPercent": "95",
+    "recoveryPercent": "85",
+    "cooldownSeconds": 21600
+  },
   "maxCaptureAgeSeconds": 600,
   "maxOracleAgeSeconds": 900,
   "crossCheckIntervalSeconds": 1800,

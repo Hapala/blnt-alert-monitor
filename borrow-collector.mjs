@@ -1,6 +1,7 @@
 import {Address} from '@stellar/stellar-sdk';
 import {selectProvider,symbolKey} from './public-rpc.mjs';
 import {capacity,borrowAprRaw,positionEntries,validateReserve,integer} from './borrow-math.mjs';
+import {reserveLiquidity} from './liquidity-alerts.mjs';
 // Public reserve data only: no wallet positions, subscriptions or alert rules.
 export async function collectPublicRates(registry,config,selector=selectProvider){
   const selected=await selector(config.publicRpcProviders),{rpc}=selected,pools=[];
@@ -17,7 +18,7 @@ export async function collectPublicRates(registry,config,selector=selectProvider
         const at=Number(integer(reserve.data.last_time));
         if(at<selected.ledgerTime-15||at>selected.ledgerTime+config.maxCycleSeconds)throw Error('Stale reserve preview');
         if(!reserve.config.enabled){disabledReserves++;continue;}
-        rates.push({asset,symbol:registry.symbols[asset]??asset.slice(0,12),observedAt:at,...borrowAprRaw(reserve)});
+        rates.push({asset,symbol:registry.symbols[asset]??asset.slice(0,12),observedAt:at,...borrowAprRaw(reserve),liquidity:reserveLiquidity(reserve)});
       }
       pools.push({id:pool.id,name:pool.name,available:true,rates,disabledReserves});
     }catch{pools.push({id:pool.id,name:pool.name,available:false,rates:[]});}
