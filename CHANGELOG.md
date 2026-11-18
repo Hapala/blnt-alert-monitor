@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-18 — Liquidity retry severity
+
+Cancel an unsent critical liquidity warning when the latest verified preview is below the critical threshold. If no warning was delivered, replace it with the current ordinary severity; an already delivered warning retains its cooldown and recovery history. Sent/uncertain outcomes never replay. Add rate-limit, downgrade, recovery/cooldown and uncertain-send regressions. Thresholds are unchanged.
+
 ## 2026-11-18 — Personal monitoring health coverage
 
 Aggregate stale/missing borrowing pool results and incomplete configured capacity/rate checks into personal-worker health instead of counting exceptions alone. Unmuted discovery failures also mark the cycle degraded. Unconfigured/muted checks and valid wallets without positions do not invent failures. Shared health posts keep generic component labels. Add worker-to-watchdog regression tests; no user rules or thresholds change.

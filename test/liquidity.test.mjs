@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openStore,setState} from '../engine.mjs';
 import {reserveLiquidity,processLiquidity,liquiditySettings,liquidityChecksDue} from '../liquidity-alerts.mjs';
+import {deliver} from '../webhook.mjs';
 const now=1800000000,c={mode:'live'};
 const reserve=(debt='90',supply='100')=>({config:{decimals:7},data:{b_supply:BigInt(supply)*10000000n,d_supply:BigInt(debt)*10000000n,b_rate:1000000000000n,d_rate:1000000000000n}});
 const snap=(t=now,debt='90',supply='100')=>({observedAt:t,markets:[{id:'p'}],borrowRates:{checkedAt:t,pools:[{id:'p',name:'Pool',available:true,rates:[{asset:'a',symbol:'TEST',liquidity:reserveLiquidity(reserve(debt,supply))}]}]}});
@@ -49,4 +50,26 @@ test('a cancelled unsent escalation retains recovery for the warning already del
  const db=openStore(':memory:');processLiquidity(db,snap(),c);db.prepare("UPDATE outbox SET status='sent'").run();
  processLiquidity(db,snap(now+300,'95'),c);processLiquidity(db,snap(now+600,'85'),c);
  assert.equal(rows(db)[1].status,'suppressed');assert.match(rows(db)[2].payload,/Liquidity improved/);db.close();
+});
+
+test('a rate-limited initial critical warning downgrades to current ordinary severity',async()=>{
+ const db=openStore(':memory:'),url='https://discord.com/api/webhooks/123456/test_token';
+ processLiquidity(db,snap(now,'95'),c);
+ await deliver(db,url,now,async()=>({ok:false,status:429,json:async()=>({retry_after:300})}));
+ processLiquidity(db,snap(now+300,'92'),c);
+ const sent=[];await deliver(db,url,now+300,async(_url,opt)=>{sent.push(JSON.parse(opt.body).embeds[0]);return {ok:true};});
+ assert.equal(rows(db)[0].status,'suppressed');assert.equal(sent.length,1);
+ assert.equal(sent[0].title,'Liquidity tight · TEST');assert.match(sent[0].description,/92%/);assert.equal(sent[0].color,0xF59E0B);db.close();
+});
+
+test('downgrading an unsent escalation preserves confirmed-warning recovery and cooldown',()=>{
+ const db=openStore(':memory:');processLiquidity(db,snap(now,'90'),c);db.prepare("UPDATE outbox SET status='sent'").run();
+ processLiquidity(db,snap(now+300,'95'),c);processLiquidity(db,snap(now+600,'92'),c);
+ assert.equal(rows(db)[1].status,'suppressed');assert.equal(rows(db).filter(r=>r.status==='pending').length,0);
+ processLiquidity(db,snap(now+900,'85'),c);assert.match(rows(db)[2].payload,/Liquidity improved/);db.close();
+});
+
+test('uncertain critical warnings never replay as downgraded ordinary warnings',()=>{
+ const db=openStore(':memory:');processLiquidity(db,snap(now,'95'),c);db.prepare("UPDATE outbox SET status='uncertain'").run();
+ processLiquidity(db,snap(now+300,'92'),c);assert.equal(rows(db).length,1);assert.equal(rows(db)[0].status,'uncertain');db.close();
 });

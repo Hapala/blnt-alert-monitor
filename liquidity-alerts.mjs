@@ -31,7 +31,7 @@ export function processLiquidity(db,snapshot,config){
       const l=rate.liquidity,supply=BigInt(l.supplyRaw),debt=BigInt(l.debtRaw),lhs=debt*100n*PERCENT;
       const warning=l.emptyWithDebt||lhs>=supply*rules.warning,critical=l.emptyWithDebt||lhs>=supply*rules.critical,recovered=!l.emptyWithDebt&&lhs<=supply*rules.recovery;
       const level=critical?2:warning?1:0,key=`liquidity:${config.mode}:${pool.id}:${rate.asset}`;
-      const state=reconcileAlert(db,getState(db,key,{armed:true,last:0,lastLevel:0,sequence:0}));
+      let state=reconcileAlert(db,getState(db,key,{armed:true,last:0,lastLevel:0,sequence:0}));
       if(state.warningId&&db.prepare('SELECT status FROM outbox WHERE id=?').get(state.warningId)?.status==='sent')state.wasWarned=true;
       const cancel=id=>{if(id)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(id);};
       const queue=(kind,title,color)=>{
@@ -40,6 +40,9 @@ export function processLiquidity(db,snapshot,config){
         Object.assign(payload.embeds[0],{color,timestamp:new Date(report.checkedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'Supply/debt estimate · Not guaranteed withdrawable'}});
         const id=`${key}:${kind}:${state.sequence}`;enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'liquidity',pool:pool.id});return id;
       };
+      if(warning&&!critical&&state.lastLevel===2&&db.prepare('SELECT status FROM outbox WHERE id=?').get(state.warningId)?.status==='pending'){
+        cancel(state.warningId);state=reconcileAlert(db,state);
+      }
       if(!warning)cancel(state.warningId);
       if(!recovered)cancel(state.recoveryId);
       if(recovered&&(!state.armed||state.recoveryId||state.wasWarned)){
