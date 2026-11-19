@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-19 — Six review fixes deployed and verified
+
+Activated immutable release `release-1795095774-6da01a87` from source `d1e8443`, containing all six separately reviewed fixes. Preparation passed 104 tests, executable import checks, a matching 13-price website cross-check and access probes. Live verification confirmed advancing release-specific heartbeats, 13 reserve APRs across both pools, fresh discovery, SQLite integrity, initialized subscription generations and zero watchdog/personal-check failures. Shared and DM workers use distinct UIDs; both direct and peer-process credential paths were checked in both directions. Read-only Discord checks verified the shared destination, dedicated bot identity and 16 subcommands. Configuration/subscriber fingerprints matched before and after activation, preserving existing approved thresholds and consent. Rollback backup and maintenance timers are available. No forced Discord test messages were sent; simulated fault-path regression tests were not repeated against real users or protocol state.
+
 ## 2026-11-18 — Windows OpenClaw startup helper
 
 Add a separate current-user Windows sign-in task to launch the existing Ubuntu OpenClaw gateway and keep WSL running without a visible console. Document verification, removal and the after-login boundary. No OpenClaw credentials, models, access policies, BLNT subscriptions or unrelated tasks are changed. A real reboot test remains separate from a manual startup test.
