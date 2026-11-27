@@ -14,14 +14,16 @@ Shared updates use a channel webhook in #price-alerts, visible to BLNT Trade ser
 - [Public pool-status and liquidity alerts](POOL_ALERTS.md)
 - [Change history](CHANGELOG.md)
 
+`/blnt-alerts active` shows shared active/unknown conditions and recent events at every severity, with optional `page:<number>`. It requires server membership, not a personal subscription. Responses are ephemeral; personal settings remain separate.
+
 ## Shared alerts
 
 | Update | Rule |
 | --- | --- |
-| Price move | ±2% over about one hour; three-hour cooldown, rearm below 1%. ±5% gets a large-move warning with a one-hour cooldown; smaller alerts may escalate after five minutes. These tiers apply to shared posts; personal price defaults remain ±5%. |
+| Price move | ±2% over about one hour is tracked at Sev 3; three-hour cooldown, rearm below 1%. ±5% gets a Sev 2 large-move post with a one-hour cooldown; smaller events may escalate after five minutes. Personal price defaults remain ±5% with existing delivery unchanged. |
 | High borrow rate | At least 10% APR per asset; check every five minutes. One warning per episode, at least six hours between warnings. Rearm at 9% or below; recovery posts require a confirmed delivered warning. Already-high rates can alert on activation. |
-| Borrow APR change | At least 1 percentage point up/down since the initial baseline or last rate update; one-hour cooldown per asset. Amber up, green down, with old/new APR. A gap over 15 minutes resets the baseline. High/recovery notices replace duplicate movement notices. Supply APY is not collected. |
-| Reserve added | A new asset detected in an already tracked pool. |
+| Borrow APR change | At least 1 percentage point up/down since the initial baseline or last recorded rate update; Sev 3, visible as a recent event rather than an automatic shared post. One-hour cooldown per asset. A gap over 15 minutes resets the baseline. High/recovery notices replace duplicate movements. Supply APY is not collected. |
+| Reserve added | A new asset detected in an already tracked pool; Sev 4 recent event, without an automatic shared post. |
 | Daily report | Disabled for the shared channel; only event alerts are posted. Existing personal digest preferences are unchanged. |
 | Monitoring health | One warning after five minutes of observed degradation; one recovery after at least one minute of healthy checks. Independent local watchdog checks prices, public rates and aggregate personal-worker health about every minute. |
 | Pool status | Changes to the pinned on-chain pool status, with old/new labels and borrowing/supply restrictions. Initial baseline is silent; unknown or missing status suppresses unsent alerts. |

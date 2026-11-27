@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-26 — Read-only shared alarm command
+
+Add `/blnt-alerts active`, with ephemeral ten-entry result pages, no personal subscription requirement and existing server/member authorization. Combine shared and independent watchdog state without querying personal records; show all severities, unknown values, durations and explicit recent-event expiry. Database/clock unavailability and empty state never claim an all-clear. Make newly created watchdog data group-private for the read-only view, retaining credential isolation. Added view, authorization, paging and custom-personal-threshold preservation tests. No automatic board, personal-default migration or live deployment included.
+
 ## 2026-11-26 — Persistent shared alarm episodes
 
 Track public price, high APR, liquidity, pool restrictions and monitoring conditions independently of notification state. Persist episode/timestamps/value/severity; stale or missing inputs become unknown instead of resolving. Use existing trigger/recovery thresholds, and retain unresolved episodes beyond ordinary history retention. Recent APR/reserve/status/gap events have an explicit one-hour lifetime. Watchdog state remains independent, and personal results/preferences are excluded. Added lifecycle, collector, restart, expiry and privacy regressions. Source only; not deployed.

@@ -95,7 +95,7 @@ def check_credentials():
         run([*args,'/usr/bin/python3','-c',code])
 
 def health_units(release):
-    service='\n'.join(['[Unit]','Description=BLNT monitoring health alerts','','[Service]','Type=oneshot',*properties(),f'WorkingDirectory={RUNTIME}',f'ExecStart={NODE} {release}/health-watchdog.mjs',f'Environment=BLNT_MONITOR_HOME={RUNTIME}',f'Environment=BLNT_RELEASE_ID={release.name}','Environment=BLNT_PUBLISH_APPROVED=true','UMask=0077','TimeoutStartSec=100',''])
+    service='\n'.join(['[Unit]','Description=BLNT monitoring health alerts','','[Service]','Type=oneshot',*properties(),f'WorkingDirectory={RUNTIME}',f'ExecStart={NODE} {release}/health-watchdog.mjs',f'Environment=BLNT_MONITOR_HOME={RUNTIME}',f'Environment=BLNT_RELEASE_ID={release.name}','Environment=BLNT_PUBLISH_APPROVED=true','UMask=0007','TimeoutStartSec=100',''])
     timer='[Unit]\nDescription=Check BLNT monitoring health every minute\n[Timer]\nOnBootSec=90\nOnUnitInactiveSec=60\nAccuracySec=5\n[Install]\nWantedBy=timers.target\n'
     return dict(zip(HEALTH_UNITS,[service,timer]))
 

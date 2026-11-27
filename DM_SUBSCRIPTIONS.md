@@ -6,6 +6,8 @@ The dedicated BLNT Alerts bot delivers personal messages and owns /blnt-alerts. 
 
 ## User controls
 
+- `/blnt-alerts active page:<optional number>` shows shared conditions and recent events at all severities. It is read-only, ephemeral and available to verified server members without a personal subscription. It never shows wallet-specific results; see [ALARMS.md](ALARMS.md).
+
 - `/blnt-alerts subscribe wallet:<public Stellar address>` opts the calling Discord user into personal DMs.
 - `/blnt-alerts status` or `pools` privately lists their settings and discovery status.
 - `/blnt-alerts add-pool pool:<choice>` follows an extra supported pool; `remove-pool` removes only that manual addition.

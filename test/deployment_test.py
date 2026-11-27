@@ -44,6 +44,7 @@ class DeploymentTests(unittest.TestCase):
   self.assertIn('/opt/release/health-watchdog.mjs',units[m.HEALTH_UNITS[0]])
   self.assertIn('discord_bot_token',units[m.HEALTH_UNITS[0]])
   self.assertIn('ProtectHome=yes',units[m.HEALTH_UNITS[0]])
+  self.assertIn('UMask=0007',units[m.HEALTH_UNITS[0]])
   self.assertIn('OnUnitInactiveSec=60',units[m.HEALTH_UNITS[1]])
  def test_prepare_dependency_failure_never_stops_workers(self):
   with tempfile.TemporaryDirectory(prefix='blnt-prepare-test-') as tmp:

@@ -19,6 +19,12 @@ Price conditions use the existing rolling-hour trigger and rearm thresholds; mis
 
 APR movements, reserve additions, normal-to-normal status changes and monitoring-resumed notices are **recent events**, with a one-hour lifetime rather than a claim of ongoing risk. Re-reading the same event does not extend its expiry. They are distinguished from ongoing conditions by an expiry timestamp. Resolved rows may be pruned after eight days; active and unknown unresolved episodes survive ordinary history retention. Only the latest episode is retained in this table, not an unlimited transition audit.
 
-Tracking is shared/public only in this phase. Personal wallet/position results are never copied into the shared alarm table, and no subscriber preferences or consent are rewritten. Live and dry-run states are isolated. A Discord read-only view is the next addition; an automatically edited pinned board remains separate work.
+Tracking is shared/public only in this phase. Personal wallet/position results are never copied into the shared alarm table, and no subscriber preferences or consent are rewritten. Live and dry-run states are isolated.
+
+## View alarms in Discord
+
+Use **`/blnt-alerts active`**, optionally `page:<number>`, in the server or a verified member DM. A personal subscription is not required. The response and follow-up pages are ephemeral, with ten entries per results page. It combines both public alarm stores, includes all four severities, separates ongoing conditions from one-hour recent events, and shows severity, value/detail and duration or expiry. Unknown values are explicitly last verified, not current. Unavailable databases, unevaluated rules, pauses and unavailable source-clock calibration are shown explicitly; an empty list never claims an all-clear. Reads do not change alarm state, outboxes or settings.
+
+The watchdog's database remains separate from the main database and private to the existing shared service group; its unit creates data with group-private permissions so the DM service can read the public alarm view. Its independent delivery and opposite-credential restrictions remain intact. No additional Discord permissions or intents are required. An automatically edited pinned board remains separate work; this command is an on-demand private view, not a new scheduled report.
 
 Severity configuration is internal rule metadata in this first version, not a new user preference interface. No Q4W collection, API source change, DSL, DM-default migration or repository transfer is included. Source commits do not activate these changes on the live host.

@@ -12,6 +12,7 @@ import {DiscordApi,loadDmToken,loadBotTarget,verifyCommandOrigin} from './dm-api
 import {subscriptionTick} from './dm-runtime.mjs';
 import {CommandGate} from './command-gate.mjs';
 import {privateReply} from './discord-format.mjs';
+import {readSharedAlarmReport} from './alarm-view.mjs';
 if(process.argv.includes('--check-install')){console.log('DM entry point imports verified');process.exit(0);}
 const home=resolve(process.env.BLNT_MONITOR_HOME??dirname(fileURLToPath(import.meta.url))),data=resolve(home,'data');
 mkdirSync(data,{recursive:true,mode:0o700});
@@ -42,6 +43,7 @@ client.on('interactionCreate',async interaction=>{
     for(const key of ['wallet','pool','category','amount','scope','confirm'])args[key]=interaction.options.getString(key);
     args.minutes=interaction.options.getInteger('minutes');
     args.percent=interaction.options.getNumber('percent');args.apr=interaction.options.getNumber('apr');args.clear=interaction.options.getBoolean('clear');
+    if(name==='active'){await privateReply(interaction,readSharedAlarmReport(home,interaction.options.getInteger('page')??1));return;}
     const now=Math.floor(interaction.createdTimestamp/1000);
     if(name==='borrowing'){
       const sub=getSubscriber(db,id);if(!sub?.enabled)throw Error('Subscribe first');

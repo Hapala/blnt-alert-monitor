@@ -9,6 +9,7 @@ export function commandDefinition(registry) {
   const muteOptions=[text('category','Notification category or all',false,[...CATEGORIES,'all'].map(v=>({name:v,value:v}))),text('pool','Pool to mute',false,pools)];
   return {name:'blnt-alerts',description:'Private BLNT wallet subscriptions and notifications',type:1,contexts:[0,1],integration_types:[0],options:[
     sub('subscribe','Opt in to DM alerts for a public wallet',[text('wallet','Public Stellar address; never a secret key',true)]),
+    sub('active','View shared alarms and recent events at all severities',[{type:4,name:'page',description:'Results page (10 entries each)',min_value:1,max_value:1000}]),
     sub('status','Show your private subscription settings'),sub('pools','Show automatic, extra and muted pools'),
     sub('add-pool','Follow another supported pool',[text('pool','Additional pool',true,pools)]),
     sub('remove-pool','Remove a manually added pool',[text('pool','Additional pool',true,pools)]),

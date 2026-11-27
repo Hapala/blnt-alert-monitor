@@ -32,3 +32,7 @@ Supply is `floor(b_supply × b_rate / 10^12)`; debt is `ceil(d_supply × d_rate 
 This is a reserve accounting estimate. It does not read the token contract's actual cash balance, account for every restriction/claim, simulate a withdrawal/borrow, or guarantee executable liquidity. Pool status, utilization caps, authorization and other checks can independently block a transaction. It is not DEX depth, slippage, market capitalization or trading volume.
 
 Missing/stale/disabled reserve coverage suppresses definitely unsent messages. Cancelled/expired eligible warnings can regenerate; uncertain or accepted sends never replay automatically. Recoveries require a confirmed warning. Personal thresholds, mutes and subscriptions are unchanged.
+
+## Severity and active state
+
+Shared automatic delivery posts only Sev 1/2. Critical liquidity and frozen/setup restrictions are Sev 1; ordinary liquidity/borrowing restrictions and meaningful recovery notices are Sev 2. Changes between normal active statuses are Sev 4 recent events. `/blnt-alerts active` shows all severities, including unresolved conditions with unknown/stale inputs. See [ALARMS.md](ALARMS.md) for exact lifecycle, expiry and deployment boundaries. Personal settings are unchanged.
