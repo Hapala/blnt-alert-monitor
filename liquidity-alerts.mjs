@@ -1,5 +1,6 @@
 import {getState,setState,enqueue,message,reconcileAlert} from './engine.mjs';
 import {integer,ceilDiv,formatUnits,decimal,PERCENT,S7,S12} from './borrow-math.mjs';
+import {observeAlarm,markMissingAlarms} from './alarms.mjs';
 export function reserveLiquidity(reserve){
   const supply=integer(reserve.data.b_supply)*integer(reserve.data.b_rate)/S12;
   const debt=ceilDiv(integer(reserve.data.d_supply)*integer(reserve.data.d_rate),S12);
@@ -22,10 +23,17 @@ export function processLiquidity(db,snapshot,config){
   if(config.audienceId&&config.audienceId!=='shared')return;
   const rules=liquiditySettings(config),now=snapshot.observedAt,report=snapshot.borrowRates;
   const fresh=rules&&report&&report.checkedAt<=now+15&&now-report.checkedAt<=180;
-  const valid=[];
-  if(fresh)for(const pool of report.pools.filter(p=>p.available&&snapshot.markets.some(m=>m.id===p.id)))for(const rate of pool.rates)if(rate.liquidity?.ready)valid.push({pool,rate});
+  const verified=[];
+  if(fresh)for(const pool of report.pools.filter(p=>p.available&&snapshot.markets.some(m=>m.id===p.id)))for(const rate of pool.rates)if(rate.liquidity)verified.push({pool,rate});
+  const valid=verified.filter(({rate})=>rate.liquidity.ready);
   db.exec('BEGIN IMMEDIATE');
   try{
+    for(const {pool,rate} of verified){
+      const l=rate.liquidity,supply=BigInt(l.supplyRaw),debt=BigInt(l.debtRaw),lhs=debt*100n*PERCENT;
+      const warning=l.emptyWithDebt||supply>0n&&lhs>=supply*rules.warning,critical=l.emptyWithDebt||supply>0n&&lhs>=supply*rules.critical,recovered=debt===0n||!l.emptyWithDebt&&lhs<=supply*rules.recovery;
+      observeAlarm(db,{mode:config.mode,key:`liquidity:${pool.id}:${rate.asset}`,category:'liquidity',pool:pool.id,asset:rate.asset,label:`${pool.name} · ${rate.symbol} liquidity`,detail:l.emptyWithDebt?'Debt with zero supplied liquidity':supply===0n?'Empty reserve':`${formatUnits((BigInt(l.utilizationRaw)+500n)/1000n,2)}% of supply borrowed`,severity:critical?1:2,condition:recovered?'resolved':warning?'active':'hold',now,validUntil:report.checkedAt+180});
+    }
+    markMissingAlarms(db,config.mode,'liquidity',verified.map(({pool,rate})=>`liquidity:${pool.id}:${rate.asset}`),now);
     for(const row of db.prepare("SELECT id,pool FROM outbox WHERE audience='shared' AND category='liquidity' AND status='pending'").all())if(!valid.some(({pool,rate})=>pool.id===row.pool&&rate.asset===row.id.split(':')[3]))db.prepare("UPDATE outbox SET status='suppressed' WHERE id=?").run(row.id);
     for(const {pool,rate} of valid){
       const l=rate.liquidity,supply=BigInt(l.supplyRaw),debt=BigInt(l.debtRaw),lhs=debt*100n*PERCENT;

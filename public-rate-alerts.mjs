@@ -1,5 +1,6 @@
 import {getState,setState,enqueue,message,reconcileAlert} from './engine.mjs';
 import {decimal,PERCENT,S7,formatUnits} from './borrow-math.mjs';
+import {observeAlarm,markMissingAlarms} from './alarms.mjs';
 
 export function publicRateSettings(config){
   const rules=config.publicBorrowRates;
@@ -41,6 +42,7 @@ function rateMovement(db,state,key,rate,pool,report,now,rules,config){
   if(!state.changeId){state.changeSequence=(state.changeSequence??0)+1;state.changeId=`${key}:change:${state.changeSequence}`;}
   state.changeRaw=rate.aprRaw;
   enqueue(db,state.changeId,now,payload,config.mode,{audience:'shared',category:'borrow_rate',pool:pool.id,severity:3});
+  observeAlarm(db,{mode:config.mode,key:`rate-change:${pool.id}:${rate.asset}`,category:'borrow_rate',pool:pool.id,asset:rate.asset,label:`${pool.name} · ${rate.symbol} APR change`,detail:payload.embeds[0].description,severity:3,condition:'active',now,eventId:state.changeId,expiresAt:now+3600});
 }
 export function publicRatesDue(db,now,config){
   const rules=publicRateSettings(config);if(!rules)return false;
@@ -56,6 +58,7 @@ export function processPublicRateAlerts(db,snapshot,config){
   const fresh=report&&report.checkedAt<=now+15&&now-report.checkedAt<=180;
   db.exec('BEGIN IMMEDIATE');
   try{
+    const tracked=[];
     // Drop definitely unsent warnings whose asset is no longer verifiable.
     const valid=new Set();
     if(fresh)for(const pool of report.pools.filter(p=>p.available&&snapshot.markets.some(m=>m.id===p.id)))
@@ -73,6 +76,8 @@ export function processPublicRateAlerts(db,snapshot,config){
         }
         const value=BigInt(rate.aprRaw)*100n*PERCENT;
         const high=value>=rules.high*S7,recovered=value<=rules.recovery*S7;
+        const alarmKey=`high-apr:${pool.id}:${rate.asset}`;tracked.push(alarmKey);
+        observeAlarm(db,{mode:config.mode,key:alarmKey,category:'borrow_rate',pool:pool.id,asset:rate.asset,label:`${pool.name} · ${rate.symbol} high APR`,detail:`${rate.aprPercent}% APR`,severity:2,condition:high?'active':recovered?'resolved':'hold',now,validUntil:report.checkedAt+180});
         const queue=(kind,title,description,color)=>{
           const payload=message(title,description);
           Object.assign(payload.embeds[0],{color,timestamp:new Date(report.checkedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'Variable annual borrow rate · Public pool data'}});
@@ -103,6 +108,7 @@ export function processPublicRateAlerts(db,snapshot,config){
         setState(db,key,state);
       }
     }
+    markMissingAlarms(db,config.mode,'borrow_rate',tracked,now);
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }

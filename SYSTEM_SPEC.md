@@ -67,6 +67,8 @@ Polling currently waits about 60 seconds **between** cycles. Collection and deli
 
 Shared severity policy (SHARE-13): classify alarm/event records from Sev 1 (critical) through Sev 4 (informational), as listed in [ALARMS.md](ALARMS.md). Only Sev 1/2 automatically post through the shared webhook. Sev 3/4 become recorded terminal events without a Discord request and are not delivered-warning evidence. Existing personal delivery/settings remain unchanged; legacy queued rows retain Sev 2. Acceptance: severity validation, legacy migration, shared filtering/no replay and unchanged personal delivery/preferences tests. Active-state tracking is distinct from delivery status.
 
+Persistent shared alarms (SHARE-14): retain the latest per-rule/pool/asset episode independently of outbox delivery, cooldowns or mutes, with severity, observed value, opened/last-observed/resolved timestamps and an episode number. Missing/stale/unverified inputs show unknown and never invent recovery; verified hysteresis recovery resolves a condition. Initially restricted pools are tracked without changing silent notification baselines. Time-limited informational/advisory events expire after one hour, distinctly from ongoing conditions. Watchdog state remains in its independent database. Active/unknown unresolved episodes survive eight-day ordinary history retention. Personal records/settings are excluded and modes are isolated. Acceptance: restart, reactivation, severity changes, stale/missing/old input, event expiry, each collector's conditions and personal-preservation regression tests. See ALARMS.md for exact lifecycles.
+
 ## 4. Personal subscriptions and controls
 
 | ID | Requirement | Acceptance check |

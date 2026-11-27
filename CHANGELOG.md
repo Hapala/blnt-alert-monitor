@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-26 — Persistent shared alarm episodes
+
+Track public price, high APR, liquidity, pool restrictions and monitoring conditions independently of notification state. Persist episode/timestamps/value/severity; stale or missing inputs become unknown instead of resolving. Use existing trigger/recovery thresholds, and retain unresolved episodes beyond ordinary history retention. Recent APR/reserve/status/gap events have an explicit one-hour lifetime. Watchdog state remains independent, and personal results/preferences are excluded. Added lifecycle, collector, restart, expiry and privacy regressions. Source only; not deployed.
+
 ## 2026-11-26 — Severity and shared delivery policy
 
 Add four severity levels and shared embed labels. Shared Sev 3/4 events are recorded silently; only Sev 1/2 automatically post. Keep personal payloads, settings and delivery unchanged. Preserve legacy queued warnings at Sev 2 and make recorded outcomes terminal without calling them delivered. Update movement baselines and pool transitions for recorded events. Added filtering, legacy migration and personal-preservation regressions. Source only; not deployed.

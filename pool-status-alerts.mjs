@@ -1,4 +1,5 @@
 import {getState,setState,enqueue,message} from './engine.mjs';
+import {observeAlarm,markMissingAlarms} from './alarms.mjs';
 export const POOL_STATUSES=['Active (admin)','Active','On ice (admin)','On ice','Frozen (admin)','Frozen','Setup'];
 export function poolStatus(value){
   if(!['number','bigint'].includes(typeof value))throw Error('Invalid pool status');
@@ -11,6 +12,7 @@ export function processPoolStatuses(db,snapshot,config){
   try{
     for(const row of db.prepare("SELECT id,pool FROM outbox WHERE audience='shared' AND category='pool_status' AND status='pending'").all())if(!valid.some(p=>p.id===row.pool))db.prepare("UPDATE outbox SET status='suppressed' WHERE id=?").run(row.id);
     for(const pool of valid){
+      observeAlarm(db,{mode:config.mode,key:`pool-status:${pool.id}`,category:'pool_status',pool:pool.id,label:`${pool.name} · pool restriction`,detail:POOL_STATUSES[pool.status],severity:pool.status>=4?1:pool.status>=2?2:4,condition:pool.status>=2?'active':'resolved',now});
       const key=`pool-status:${config.mode}:${pool.id}`,state=getState(db,key,{value:pool.status,sequence:0});
       const cancel=()=>{if(state.pendingId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.pendingId);};
       let row=state.pendingId?db.prepare('SELECT status,attempts FROM outbox WHERE id=?').get(state.pendingId):null;
@@ -25,10 +27,12 @@ export function processPoolStatuses(db,snapshot,config){
           if(!state.pendingId){state.sequence++;state.pendingId=`${key}:${state.sequence}`;}
           state.pendingValue=pool.status;
           enqueue(db,state.pendingId,now,payload,config.mode,{audience:'shared',category:'pool_status',pool:pool.id,severity:pool.status>=4?1:pool.status>=2||state.value>=2?2:4});
+          if(pool.status<=1&&state.value<=1)observeAlarm(db,{mode:config.mode,key:`pool-status-event:${pool.id}`,category:'pool_status',pool:pool.id,label:`${pool.name} · status update`,detail:`${POOL_STATUSES[state.value]} → ${POOL_STATUSES[pool.status]}`,severity:4,condition:'active',now,eventId:state.pendingId,expiresAt:now+3600});
         }
       }
       setState(db,key,state);
     }
+    markMissingAlarms(db,config.mode,'pool_status',valid.map(p=>`pool-status:${p.id}`),now);
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }

@@ -1,4 +1,5 @@
 import {getState,setState,enqueue,message} from './engine.mjs';
+import {observeAlarm,markMissingAlarms,pruneAlarms} from './alarms.mjs';
 
 export function monitoringClock(snapshot,hostNow){
   const ledger=snapshot?.observedAt,captured=snapshot?.hostObservedAt;
@@ -22,6 +23,7 @@ export function processMonitoringHealth(db,{now,issues,paused=false},config){
   const queue=(id,title,description,color,severity=2)=>{
     const payload=message(title,description);Object.assign(payload.embeds[0],{color,timestamp:new Date(now*1000).toISOString(),footer:{text:'BLNT Alerts · Monitoring status'}});
     enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'monitor_health',severity});
+    if(severity===4)observeAlarm(db,{mode:config.mode,key:'monitor-gap',category:'monitor_health',label:'Monitoring resumed',detail:description,severity,condition:'active',now,eventId:id,expiresAt:now+3600});
   };
   db.exec('BEGIN IMMEDIATE');
   try{
@@ -47,6 +49,9 @@ export function processMonitoringHealth(db,{now,issues,paused=false},config){
       // gap only on return, clearly separating it from a live outage warning.
       if(!state.warningId&&!state.recoveryId&&state.lastCheck!=null&&now-state.lastCheck>600)queue(`${key}:gap:${state.lastCheck}`,'Monitoring resumed',`Checks resumed after a **${Math.floor((now-state.lastCheck)/60)}-minute gap**.\nAlerts may have been delayed.`,0x3B82F6,4);
     }
+    if(paused)markMissingAlarms(db,config.mode,'monitor_health',[],now);
+    else observeAlarm(db,{mode:config.mode,key:'monitor-health',category:'monitor_health',label:'Monitoring delayed',detail:issues.length?issues.join(' · '):'Checks updating',severity:2,condition:issues.length?(now-state.badSince>=300?'active':'hold'):(state.goodSince!=null&&now-state.goodSince>=60?'resolved':'hold'),now,validUntil:now+180});
+    pruneAlarms(db,config.mode,now,config.retentionDays??8);
     state.lastCheck=now;setState(db,key,state);
     db.prepare("DELETE FROM outbox WHERE created<? AND status IN ('sent','recorded','preview','expired','suppressed') AND id NOT IN (?,?)").run(now-(config.retentionDays??8)*86400,state.warningId??'',state.recoveryId??'');
     db.exec('COMMIT');

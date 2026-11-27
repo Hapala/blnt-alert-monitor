@@ -1,5 +1,6 @@
 import {DatabaseSync} from 'node:sqlite';
 import {severityLevel,defaultSeverity,severityPayload} from './severity.mjs';
+import {initAlarms,observeAlarm,markMissingAlarms,pruneAlarms} from './alarms.mjs';
 
 export function openStore(path) {
   const db = new DatabaseSync(path);
@@ -11,7 +12,7 @@ export function openStore(path) {
   if(!db.prepare('PRAGMA table_info(samples)').all().some(c=>c.name==='priceRaw'))db.exec('ALTER TABLE samples ADD COLUMN priceRaw TEXT');
   const outboxColumns=new Set(db.prepare('PRAGMA table_info(outbox)').all().map(c=>c.name));
   for(const [name,type] of [['audience',"TEXT NOT NULL DEFAULT 'shared'"],['category',"TEXT NOT NULL DEFAULT 'uncategorized'"],['pool','TEXT'],['severity','INTEGER NOT NULL DEFAULT 2']])if(!outboxColumns.has(name))db.exec(`ALTER TABLE outbox ADD COLUMN ${name} ${type}`);
-  return db;
+  initAlarms(db);return db;
 }
 export function reachesThreshold(currentRaw,baselineRaw,percent,direction) {
   const current=BigInt(currentRaw),baseline=BigInt(baselineRaw);
@@ -96,6 +97,7 @@ export function processSnapshot(db, snapshot, c) {
   const queue=(id,payload,category,pool=null,severity)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool,severity});};
   db.exec('BEGIN IMMEDIATE');
   try {
+    const trackedPriceKeys=[];
     // A known-unsent price warning must not outlive verified asset coverage.
     const verified=snapshot.observations.filter(o=>allowed('price')&&o.alertEligible!==false&&o.timestamp<=now+15&&now-o.timestamp<=(o.priceRaw?c.maxOracleAgeSeconds:c.maxCaptureAgeSeconds));
     for(const row of db.prepare("SELECT id FROM outbox WHERE audience=? AND category='price' AND status='pending'").all(audience))
@@ -105,7 +107,7 @@ export function processSnapshot(db, snapshot, c) {
     for (const o of snapshot.observations) {
       if(o.timestamp>now+15||now-o.timestamp>(o.priceRaw?c.maxOracleAgeSeconds:c.maxCaptureAgeSeconds))continue;
       db.prepare('INSERT OR IGNORE INTO samples(key,t,observed,price,priceRaw) VALUES (?,?,?,?,?)').run(o.key, o.timestamp, now, o.price,o.priceRaw??null);
-      if(o.alertEligible===false||!allowed('price'))continue;
+      if(o.alertEligible===false||(!allowed('price')&&audience!=='shared'))continue;
       const rows = db.prepare('SELECT t,price,priceRaw FROM samples WHERE key=? AND t>=? AND t<=? ORDER BY t')
         .all(o.key, now - c.windowSeconds - c.baselineToleranceSeconds, now);
       const target = now - c.windowSeconds;
@@ -124,6 +126,12 @@ export function processSnapshot(db, snapshot, c) {
         const large=priceRules.largePercent!=null&&(exact?reachesThreshold(o.priceRaw,baseline.priceRaw,priceRules.largePercent,direction):signed>=priceRules.largePercent);
         const level=large?'large':'small',cooldown=large?priceRules.largeCooldownSeconds:priceRules.cooldownSeconds;
         const escalation=large&&state.lastLevel==='small'&&now-state.last>=priceRules.escalationSeconds;
+        if(audience==='shared'){
+          const key=`price:${o.key}:${direction}`;trackedPriceKeys.push(key);
+          const validUntil=Math.min(now+300,o.timestamp+(o.priceRaw?c.maxOracleAgeSeconds:c.maxCaptureAgeSeconds),Number.isFinite(snapshot.crossCheck?.checkedAt)?snapshot.crossCheck.checkedAt+c.crossCheckMaxAgeSeconds:Infinity);
+          observeAlarm(db,{mode:c.mode,key,category:'price',pool:o.pool,asset:o.asset,label:`${o.poolName} · ${o.symbol} price ${direction}`,detail:`${change>=0?'+':''}${change.toFixed(2)}% over ~1h · ${o.priceExact??o.price} ${o.quote}`,severity:large?2:3,condition:triggered?'active':rearm?'resolved':'hold',now,validUntil});
+        }
+        if(!allowed('price'))continue;
         if (rearm) state.armed = true;
         if (triggered && (state.armed&&now-state.last>=cooldown||escalation)) {
           if(escalation&&state.pendingId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.pendingId);
@@ -138,11 +146,13 @@ export function processSnapshot(db, snapshot, c) {
         setState(db, stateKey, state);
       }
     }
+    if(audience==='shared')markMissingAlarms(db,c.mode,'price',trackedPriceKeys,now);
     const marketKey = `${scope}${snapshot.source??'website'}:${c.mode}:markets`;
     const previous = getState(db, marketKey, {});
     for (const market of snapshot.markets) {
       const before = previous[market.id];
       if (before) for (const asset of market.reserves.filter(a => !before.includes(a))) {
+        if(audience==='shared')observeAlarm(db,{mode:c.mode,key:`reserve-added:${market.id}:${asset}`,category:'reserve_updates',pool:market.id,asset,label:`${market.name} · reserve added`,detail:asset,severity:4,condition:'active',now,eventId:`${market.id}:${asset}:${now}`,expiresAt:now+3600});
         queue(`${c.mode}:reserve:${market.id}:${asset}:${now}`,
           message(`${prefix}Pool reserve added`, `**Pool:** ${market.name}\n**New reserve:** \`${asset}\`\n**Observed (UTC):** ${new Date(now*1000).toISOString()}\nhttps://blnt.trade/`),'reserve_updates',market.id);
       }
@@ -161,6 +171,7 @@ export function processSnapshot(db, snapshot, c) {
           `Sample — no price-movement threshold triggered.\n**${o.poolName} · ${o.symbol}** ${o.priceExact} ${o.quote}`),'format_preview',o.pool);
     }
     const cutoff = now - c.retentionDays * 86400;
+    if(audience==='shared')pruneAlarms(db,c.mode,now,c.retentionDays);
     db.prepare('DELETE FROM samples WHERE t<?').run(cutoff);
     db.prepare('DELETE FROM runs WHERE t<?').run(cutoff);
     // Retain bounded episode evidence until the rate state releases it.
