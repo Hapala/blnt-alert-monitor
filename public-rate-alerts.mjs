@@ -15,7 +15,7 @@ function rateMovement(db,state,key,rate,pool,report,now,rules,config){
   const raw=BigInt(rate.aprRaw);
   if(state.changeId){
     const row=db.prepare('SELECT status,created,attempts FROM outbox WHERE id=?').get(state.changeId);
-    if(row&&['sent','uncertain','sending','failed'].includes(row.status)){
+    if(row&&['sent','recorded','uncertain','sending','failed'].includes(row.status)){
       state.baselineRaw=state.changeRaw;state.lastChange=row.created;delete state.changeId;
     }
   }
@@ -40,7 +40,7 @@ function rateMovement(db,state,key,rate,pool,report,now,rules,config){
   Object.assign(payload.embeds[0],{color:rising?0xF59E0B:0x22C55E,timestamp:new Date(report.checkedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'Variable borrow APR · Change since last rate update'}});
   if(!state.changeId){state.changeSequence=(state.changeSequence??0)+1;state.changeId=`${key}:change:${state.changeSequence}`;}
   state.changeRaw=rate.aprRaw;
-  enqueue(db,state.changeId,now,payload,config.mode,{audience:'shared',category:'borrow_rate',pool:pool.id});
+  enqueue(db,state.changeId,now,payload,config.mode,{audience:'shared',category:'borrow_rate',pool:pool.id,severity:3});
 }
 export function publicRatesDue(db,now,config){
   const rules=publicRateSettings(config);if(!rules)return false;

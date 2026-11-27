@@ -15,7 +15,7 @@ const A='111111111111111111',B='222222222222222222',wallet='GAAQCAIBAEAQCAIBAEAQ
 const [P,Q]=registry.pools.map(p=>p.id),now=1800000000;
 const setup=()=>{const db=openStore(':memory:');initSubscriptions(db);saveSubscriber(db,A,wallet,now);return db;};
 const discovery={checkedAt:now,pools:{[P]:{associated:true,stale:false},[Q]:{associated:false,stale:false}}};
-const queue=(db,id,audience=A,category='price',pool=P)=>enqueue(db,id,now,message('test','test'),'live',{audience,category,pool});
+const queue=(db,id,audience=A,category='price',pool=P)=>enqueue(db,id,now,message('test','test'),'live',{audience,category,pool,severity:2});
 const state=(db,id)=>db.prepare('SELECT status FROM outbox WHERE id=?').get(id).status;
 
 test('discovers supply, collateral, debt, backstop shares and queued withdrawals; rejects malformed balances',()=>{

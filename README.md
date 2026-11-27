@@ -5,6 +5,7 @@ Self-hosted pool monitoring and opt-in Discord alerts for BLNT.trade. Prices com
 Shared updates use a channel webhook in #price-alerts, visible to BLNT Trade server members. Personal alerts use verified one-to-one bot DMs, with wallet-based pool discovery, optional extra pools, category/pool mutes, pause, snooze and unsubscribe. Borrowing-capacity and borrow-APR thresholds are customizable per pool and default off.
 
 - [Agent workflow and review instructions](AGENTS.md)
+- [Severity and shared alarm behavior](ALARMS.md)
 - [Manager review handoff — November 19, 2026](MANAGER_HANDOFF.md)
 - [Proposed cloud migration plan](CLOUD_MIGRATION_PLAN.md)
 - [System requirements, acceptance checks and known gaps](SYSTEM_SPEC.md)

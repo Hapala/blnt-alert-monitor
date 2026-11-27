@@ -38,7 +38,7 @@ export function processLiquidity(db,snapshot,config){
         const utilization=l.emptyWithDebt?'**No supplied liquidity**':`**${formatUnits((BigInt(l.utilizationRaw)+500n)/1000n,2)}% of supply borrowed**`;
         const payload=message(`${title} · ${rate.symbol}`,`**${pool.name}** · ${utilization}\nEst. unborrowed supply: **${formatUnits(BigInt(l.unborrowedRaw),l.decimals)} ${rate.symbol}**`);
         Object.assign(payload.embeds[0],{color,timestamp:new Date(report.checkedAt*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'Supply/debt estimate · Not guaranteed withdrawable'}});
-        const id=`${key}:${kind}:${state.sequence}`;enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'liquidity',pool:pool.id});return id;
+        const id=`${key}:${kind}:${state.sequence}`;enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'liquidity',pool:pool.id,severity:kind==='warning'&&critical?1:2});return id;
       };
       if(warning&&!critical&&state.lastLevel===2&&db.prepare('SELECT status FROM outbox WHERE id=?').get(state.warningId)?.status==='pending'){
         cancel(state.warningId);state=reconcileAlert(db,state);

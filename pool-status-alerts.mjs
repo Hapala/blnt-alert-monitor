@@ -14,7 +14,7 @@ export function processPoolStatuses(db,snapshot,config){
       const key=`pool-status:${config.mode}:${pool.id}`,state=getState(db,key,{value:pool.status,sequence:0});
       const cancel=()=>{if(state.pendingId)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(state.pendingId);};
       let row=state.pendingId?db.prepare('SELECT status,attempts FROM outbox WHERE id=?').get(state.pendingId):null;
-      if(state.pendingId&&(!row||['sent','sending','uncertain','failed','preview'].includes(row.status))){state.value=state.pendingValue;delete state.pendingId;row=null;}
+      if(state.pendingId&&(!row||['sent','recorded','sending','uncertain','failed','preview'].includes(row.status))){state.value=state.pendingValue;delete state.pendingId;row=null;}
       if(state.value===pool.status){cancel();delete state.pendingId;}
       else{
         if(state.pendingId&&state.pendingValue!==pool.status){cancel();delete state.pendingId;row=null;}
@@ -24,7 +24,7 @@ export function processPoolStatuses(db,snapshot,config){
           Object.assign(payload.embeds[0],{color:pool.status<=1?0x22C55E:pool.status<=3?0xF59E0B:0xEF4444,timestamp:new Date(now*1000).toISOString(),url:'https://blnt.trade/',footer:{text:'On-chain pool status · Other transaction checks still apply'}});
           if(!state.pendingId){state.sequence++;state.pendingId=`${key}:${state.sequence}`;}
           state.pendingValue=pool.status;
-          enqueue(db,state.pendingId,now,payload,config.mode,{audience:'shared',category:'pool_status',pool:pool.id});
+          enqueue(db,state.pendingId,now,payload,config.mode,{audience:'shared',category:'pool_status',pool:pool.id,severity:pool.status>=4?1:pool.status>=2||state.value>=2?2:4});
         }
       }
       setState(db,key,state);

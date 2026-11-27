@@ -65,6 +65,8 @@ Pool oracle prices are reference prices, not executable market prices. Reserve `
 
 Polling currently waits about 60 seconds **between** cycles. Collection and delivery time add latency. Event alerts are detected by polling; they are not instantaneous push notifications.
 
+Shared severity policy (SHARE-13): classify alarm/event records from Sev 1 (critical) through Sev 4 (informational), as listed in [ALARMS.md](ALARMS.md). Only Sev 1/2 automatically post through the shared webhook. Sev 3/4 become recorded terminal events without a Discord request and are not delivered-warning evidence. Existing personal delivery/settings remain unchanged; legacy queued rows retain Sev 2. Acceptance: severity validation, legacy migration, shared filtering/no replay and unchanged personal delivery/preferences tests. Active-state tracking is distinct from delivery status.
+
 ## 4. Personal subscriptions and controls
 
 | ID | Requirement | Acceptance check |

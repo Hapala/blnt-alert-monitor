@@ -19,9 +19,9 @@ export function processMonitoringHealth(db,{now,issues,paused=false},config){
   const key=`monitor-health:${config.mode}`,state=getState(db,key,{sequence:0,lastCheck:null,badSince:null,goodSince:null});
   const status=id=>id?db.prepare('SELECT status FROM outbox WHERE id=?').get(id)?.status:null;
   const cancel=id=>{if(id)db.prepare("UPDATE outbox SET status='suppressed' WHERE id=? AND status='pending'").run(id);};
-  const queue=(id,title,description,color)=>{
+  const queue=(id,title,description,color,severity=2)=>{
     const payload=message(title,description);Object.assign(payload.embeds[0],{color,timestamp:new Date(now*1000).toISOString(),footer:{text:'BLNT Alerts · Monitoring status'}});
-    enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'monitor_health'});
+    enqueue(db,id,now,payload,config.mode,{audience:'shared',category:'monitor_health',severity});
   };
   db.exec('BEGIN IMMEDIATE');
   try{
@@ -45,10 +45,10 @@ export function processMonitoringHealth(db,{now,issues,paused=false},config){
       }
       // A local watchdog cannot post while its host is off. Report a long check
       // gap only on return, clearly separating it from a live outage warning.
-      if(!state.warningId&&!state.recoveryId&&state.lastCheck!=null&&now-state.lastCheck>600)queue(`${key}:gap:${state.lastCheck}`,'Monitoring resumed',`Checks resumed after a **${Math.floor((now-state.lastCheck)/60)}-minute gap**.\nAlerts may have been delayed.`,0x3B82F6);
+      if(!state.warningId&&!state.recoveryId&&state.lastCheck!=null&&now-state.lastCheck>600)queue(`${key}:gap:${state.lastCheck}`,'Monitoring resumed',`Checks resumed after a **${Math.floor((now-state.lastCheck)/60)}-minute gap**.\nAlerts may have been delayed.`,0x3B82F6,4);
     }
     state.lastCheck=now;setState(db,key,state);
-    db.prepare("DELETE FROM outbox WHERE created<? AND status IN ('sent','preview','expired','suppressed') AND id NOT IN (?,?)").run(now-(config.retentionDays??8)*86400,state.warningId??'',state.recoveryId??'');
+    db.prepare("DELETE FROM outbox WHERE created<? AND status IN ('sent','recorded','preview','expired','suppressed') AND id NOT IN (?,?)").run(now-(config.retentionDays??8)*86400,state.warningId??'',state.recoveryId??'');
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }

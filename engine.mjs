@@ -1,4 +1,5 @@
 import {DatabaseSync} from 'node:sqlite';
+import {severityLevel,defaultSeverity,severityPayload} from './severity.mjs';
 
 export function openStore(path) {
   const db = new DatabaseSync(path);
@@ -9,7 +10,7 @@ export function openStore(path) {
     CREATE TABLE IF NOT EXISTS runs (t INTEGER PRIMARY KEY, snapshot TEXT);`);
   if(!db.prepare('PRAGMA table_info(samples)').all().some(c=>c.name==='priceRaw'))db.exec('ALTER TABLE samples ADD COLUMN priceRaw TEXT');
   const outboxColumns=new Set(db.prepare('PRAGMA table_info(outbox)').all().map(c=>c.name));
-  for(const [name,type] of [['audience',"TEXT NOT NULL DEFAULT 'shared'"],['category',"TEXT NOT NULL DEFAULT 'uncategorized'"],['pool','TEXT']])if(!outboxColumns.has(name))db.exec(`ALTER TABLE outbox ADD COLUMN ${name} ${type}`);
+  for(const [name,type] of [['audience',"TEXT NOT NULL DEFAULT 'shared'"],['category',"TEXT NOT NULL DEFAULT 'uncategorized'"],['pool','TEXT'],['severity','INTEGER NOT NULL DEFAULT 2']])if(!outboxColumns.has(name))db.exec(`ALTER TABLE outbox ADD COLUMN ${name} ${type}`);
   return db;
 }
 export function reachesThreshold(currentRaw,baselineRaw,percent,direction) {
@@ -25,10 +26,11 @@ export function setState(db, key, value) {
   db.prepare('INSERT OR REPLACE INTO state VALUES (?,?)').run(key, JSON.stringify(value));
 }
 export function enqueue(db, id, now, payload, mode, routing={}) {
-  db.prepare(`INSERT INTO outbox(id,created,status,payload,audience,category,pool) VALUES (?,?,?,?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET created=excluded.created,status=excluded.status,payload=excluded.payload
+  const audience=routing.audience??'shared',severity=severityLevel(routing.severity??defaultSeverity(routing.category));
+  db.prepare(`INSERT INTO outbox(id,created,status,payload,audience,category,pool,severity) VALUES (?,?,?,?,?,?,?,?)
+    ON CONFLICT(id) DO UPDATE SET created=excluded.created,status=excluded.status,payload=excluded.payload,severity=excluded.severity
     WHERE outbox.status IN ('suppressed','expired') AND outbox.attempts<4`)
-    .run(id, now, mode === 'live' ? 'pending' : 'preview', JSON.stringify(payload),routing.audience??'shared',routing.category??'uncategorized',routing.pool??null);
+    .run(id, now, mode === 'live' ? 'pending' : 'preview', JSON.stringify(audience==='shared'?severityPayload(payload,severity):payload),audience,routing.category??'uncategorized',routing.pool??null,severity);
 }
 // Only definitely unsent cancellations may re-arm a condition. Never replay an
 // uncertain/in-flight/accepted delivery, even after preferences change.
@@ -36,7 +38,7 @@ export function reconcileAlert(db,state){
   if(state.pendingId){
     const row=db.prepare('SELECT status FROM outbox WHERE id=?').get(state.pendingId);
     if(row&&['suppressed','expired'].includes(row.status)){state.armed=true;state.last=state.beforeQueuedLast??0;if('beforeQueuedLevel' in state)state.lastLevel=state.beforeQueuedLevel;delete state.pendingId;}
-    else if(row?.status==='sent')delete state.pendingId;
+    else if(['sent','recorded'].includes(row?.status))delete state.pendingId;
   }
   return state;
 }
@@ -91,7 +93,7 @@ export function processSnapshot(db, snapshot, c) {
   const audience=c.audienceId??'shared',scope=audience==='shared'?'':`subscriber:${audience}:`;
   const priceRules=priceAlertSettings(c,audience);
   const allowed=category=>!(c.mutedCategories??[]).includes(category);
-  const queue=(id,payload,category,pool=null)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool});};
+  const queue=(id,payload,category,pool=null,severity)=>{if(allowed(category))enqueue(db,scope+id,now,payload,c.mode,{audience,category,pool,severity});};
   db.exec('BEGIN IMMEDIATE');
   try {
     // A known-unsent price warning must not outlive verified asset coverage.
@@ -129,7 +131,7 @@ export function processSnapshot(db, snapshot, c) {
             `**${o.poolName}** · **${o.priceExact??o.price.toPrecision(8)} ${o.quote}**\nPreviously ${baseline.price} ${o.quote} · ${Math.round((o.timestamp-baseline.t)/60)} min`);
           Object.assign(payload.embeds[0],{color:direction==='up'?(large?0xF59E0B:0x22C55E):0xEF4444,url:o.sourceUrl,timestamp:new Date(o.timestamp*1000).toISOString(),footer:{text:'Pool oracle reference price'}});
           const id=`${c.mode}:alert:${o.key}:${direction}:${o.timestamp}`;
-          queue(id,payload,'price',o.pool);
+          queue(id,payload,'price',o.pool,audience!=='shared'||large?2:3);
           state.beforeQueuedLast=state.last;state.beforeQueuedLevel=state.lastLevel??null;state.pendingId=scope+id;
           state.armed = false; state.last = now;state.lastLevel=level;
         }
@@ -162,7 +164,7 @@ export function processSnapshot(db, snapshot, c) {
     db.prepare('DELETE FROM samples WHERE t<?').run(cutoff);
     db.prepare('DELETE FROM runs WHERE t<?').run(cutoff);
     // Retain bounded episode evidence until the rate state releases it.
-    db.prepare(`DELETE FROM outbox WHERE created<? AND status IN ('preview','sent','expired','suppressed') AND id NOT IN (
+    db.prepare(`DELETE FROM outbox WHERE created<? AND status IN ('preview','sent','recorded','expired','suppressed') AND id NOT IN (
       SELECT json_extract(value,'$.highId') FROM state WHERE key LIKE 'public-rate:%' AND json_extract(value,'$.highId') IS NOT NULL
       UNION SELECT json_extract(value,'$.recoveryId') FROM state WHERE key LIKE 'public-rate:%' AND json_extract(value,'$.recoveryId') IS NOT NULL
     )`).run(cutoff);

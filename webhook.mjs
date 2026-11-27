@@ -22,6 +22,7 @@ export async function verifyWebhookTarget(secret,target,fetcher=fetch) {
 }
 export async function deliver(db, secret, now, fetcher = fetch, audience='shared') {
   const url = validateWebhook(secret);
+  if(audience==='shared')db.prepare("UPDATE outbox SET status='recorded' WHERE audience='shared' AND status='pending' AND severity>2").run();
   // A crash after sending may leave an uncertain outcome. Never resend it automatically.
   db.prepare("UPDATE outbox SET status='uncertain' WHERE status='sending' AND audience=?").run(audience);
   db.prepare("UPDATE outbox SET status='expired' WHERE status='pending' AND created<? AND audience=?").run(now - 900,audience);
