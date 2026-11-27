@@ -24,4 +24,4 @@ Check Windows task state, WSL launch and enabled systemd services separately fro
 - Unsafe paths are rejected; missing `flock` stops preparation before account/service changes.
 - After activation, check real-profile ownership/duplicate refusal, restart recovery, fresh release-specific heartbeats, SQLite integrity, Discord identity/command routing, credential isolation and unchanged private settings fingerprints. Do not replay uncertain sends or manufacture protocol events for a restart test.
 
-Automated lock tests use temporary files and synthetic processes. Live recovery checks are recorded in the deployment receipt. No wallet/threshold changes or new Discord permissions are involved.
+Automated lock tests use temporary files and synthetic processes. Live recovery checks are recorded in the [deployment receipt](DEPLOYMENT_LOCKS_2026-11-27.md). No wallet/threshold changes or new Discord permissions are involved.

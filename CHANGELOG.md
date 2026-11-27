@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-27 — Worker-lock recovery deployed
+
+Activated `release-1795791180-c5384b8b` from `a08144e` after 128 tests and passing CI. Both deployed workers recovered automatically from controlled SIGKILL tests without manual lock cleanup; post-recovery kernel probes refused duplicate acquisition. Fresh data, watchdog health, credential isolation and unchanged configuration/subscriber fingerprints passed. Full Windows reboot testing remains outstanding; existing WSL startup is after sign-in. See [deployment verification](DEPLOYMENT_LOCKS_2026-11-27.md).
+
 ## 2026-11-27 — Kernel-held worker locks
 
 Replace PID-only shared/DM locks with nonblocking kernel file locks held for process lifetime and released on graceful exit, crash or reboot. Preserve lock inodes and numeric inspection metadata; reject genuine legacy owners during upgrades and fail closed on unsafe/unavailable locks. Preparation checks util-linux flock before activation. Add real-process concurrency, SIGKILL/descriptor inheritance, reused-PID, partial metadata, legacy-owner and unsafe-path regressions. Personal settings and delivery semantics are unchanged. Deployment verification is recorded separately.
