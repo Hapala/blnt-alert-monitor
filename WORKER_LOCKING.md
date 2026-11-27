@@ -10,7 +10,7 @@ For upgrade safety, a live same-UID Node worker using the legacy entry point sti
 
 ## Windows/WSL startup boundary
 
-The systemd worker units are enabled to start when Ubuntu boots and use `Restart=on-failure`. Windows must first launch WSL; the existing current-user `OpenClaw WSL Gateway` task does that after Windows sign-in and keeps its WSL client alive. See [OPENCLAW_STARTUP.md](OPENCLAW_STARTUP.md). This fix removes the stale-PID blocker in either alert worker; it does not provide startup before Windows login or prevent the host from sleeping.
+The systemd worker units are enabled to start when Ubuntu boots and use `Restart=on-failure`. Windows must first launch WSL. The optional [BLNT boot task](WINDOWS_BOOT.md) provides password-free startup before sign-in after its noninteractive readiness check passes. The existing current-user `OpenClaw WSL Gateway` task launches WSL after Windows sign-in; see [OPENCLAW_STARTUP.md](OPENCLAW_STARTUP.md). Kernel locking is independent of either launch mechanism and does not prevent host sleep.
 
 Check Windows task state, WSL launch and enabled systemd services separately from lock correctness. A full Windows restart is distinct from automated crash/reused-PID tests and controlled worker restarts. Never restart the whole distribution just to test this fix when unrelated services are running.
 

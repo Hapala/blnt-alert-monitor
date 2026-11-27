@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-11-27 — Optional startup before Windows sign-in
+
+Add a dedicated limited-privilege S4U boot task that launches existing Ubuntu services and keeps WSL alive without storing a password or depending on a checkout script. A fixed profile-free PowerShell command supplies native handles for WSL. Before installation, test the actual noninteractive principal's WSL access, enabled/running units, public RPC health and Discord HTTPS access using the deployed Node network implementation. Preserve the personal OpenClaw sign-in task and all alert settings. Add Windows argument-safety checks; document installation, removal and the separate full-reboot acceptance check.
+
+Installed and read back the running boot task after its actual S4U readiness test passed. Both workers remained healthy, website/data/watchdog checks passed and private settings fingerprints were unchanged. Windows PowerShell checks and 128 Node tests passed. A full Windows reboot without sign-in remains untested. See [verification and operating instructions](WINDOWS_BOOT.md).
+
 ## 2026-11-27 — Worker-lock recovery deployed
 
 Activated `release-1795791180-c5384b8b` from `a08144e` after 128 tests and passing CI. Both deployed workers recovered automatically from controlled SIGKILL tests without manual lock cleanup; post-recovery kernel probes refused duplicate acquisition. Fresh data, watchdog health, credential isolation and unchanged configuration/subscriber fingerprints passed. Full Windows reboot testing remains outstanding; existing WSL startup is after sign-in. See [deployment verification](DEPLOYMENT_LOCKS_2026-11-27.md).

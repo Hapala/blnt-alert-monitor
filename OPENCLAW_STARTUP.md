@@ -10,7 +10,7 @@ From a stable checkout of this repository, run in PowerShell as the Windows user
 
 The installer creates `OpenClaw WSL Gateway` for that user, starts it immediately, and schedules it 20 seconds after subsequent Windows sign-ins. It opens no visible console. It starts the existing `openclaw-gateway.service` and keeps a WSL foreground client alive; Linux systemd continues to supervise gateway crashes. Windows retries startup failures every minute. Re-running the installer updates only its own named task. It does not read tokens, change OpenClaw access/model settings, enable a disabled Linux service, or change BLNT alert settings.
 
-This starts after signing into Windows following a reboot, **not before login**. Windows remains free to sleep/shut down; this is not always-on hosting. Before-login operation requires a separate Windows service/account setup. Keep the checkout path available because the task references its script there.
+This starts after signing into Windows following a reboot, **not before login**. Windows remains free to sleep/shut down; this is not always-on hosting. The separate optional [BLNT Alerts boot task](WINDOWS_BOOT.md) can launch Ubuntu before login without changing this personal gateway task. Keep the checkout path available because the OpenClaw task references its script there.
 
 Verify:
 

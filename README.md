@@ -105,4 +105,4 @@ After unsubscribing, `/blnt-alerts forget confirm:DELETE` erases current local s
 
 Continuous operation requires the host and WSL to remain awake. Public-provider uptime and rate limits remain trial dependencies. Oracle references are not execution prices. Available borrowing headroom is a risk-adjusted credit measure, not guaranteed cash or a guarantee that a proposed borrow succeeds. Trading volume/liquidity, arbitrary news and trading execution are outside this project.
 
-For the separate personal OpenClaw gateway, [Windows startup instructions](OPENCLAW_STARTUP.md) configure automatic WSL launch after Windows sign-in. This does not deploy this monitor or change alert settings.
+For BLNT Alerts before Windows sign-in, use the optional [Windows boot task](WINDOWS_BOOT.md), which first tests password-free noninteractive WSL/network access. For the separate personal OpenClaw gateway, [Windows startup instructions](OPENCLAW_STARTUP.md) configure automatic WSL launch after Windows sign-in. Neither installer deploys this monitor or changes alert settings.
