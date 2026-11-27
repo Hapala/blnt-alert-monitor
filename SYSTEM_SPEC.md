@@ -159,4 +159,6 @@ The reliability/isolation baseline is implemented in the reviewed hardening chan
 
 **Operational work not completed:** always-on/off-host hosting; independent off-host outage heartbeat and backup storage; a full 20-user/provider-load exercise; end-to-end restore and Windows reboot recovery; independent audit of upstream contracts/native binaries. These are follow-ups, not implemented guarantees or permission to buy/deploy infrastructure.
 
+**Startup lock limitation (observed November 27, 2026):** an obsolete PID-only collector lock can survive an unclean shutdown and block restart when the PID is reused by an unrelated process. The observed lock referenced `agetty`; after confirming no managed collector was running, the exact obsolete lock was removed and collection recovered. Restart-safe lock identity/recovery remains open. A healthy current deployment does not prove reboot recovery. After a collection gap, hourly price-move conditions need sufficient new continuous history; freshness checks must not be relaxed to avoid that warmup.
+
 When adding or changing a requirement, explain the user-visible trigger/result, identify acceptance checks, update the relevant guide, and ask the owner to review the changed requirement. Resolve implementation/spec disagreements explicitly rather than weakening checks or quietly marking planned behavior as shipped.
