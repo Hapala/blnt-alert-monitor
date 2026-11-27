@@ -21,6 +21,8 @@ wsl -d Ubuntu -u hermes -- systemctl --user is-active openclaw-gateway.service
 
 The task normally stays `Running` because its foreground WSL client is intentional. A manual task start proves launch behavior, not a completed reboot test. An existing Windows node companion can start before the WSL gateway is ready; inspect its own result separately. This installer leaves other tasks untouched.
 
+Enabled BLNT system services also start when this launches Ubuntu. Their independent [kernel-held worker locks](WORKER_LOCKING.md) release on crashes/reboot; PID marker files do not need manual deletion. The Windows task/WSL launch and Linux service/lock recovery remain separate checks.
+
 To remove this startup behavior without changing Linux service settings:
 
 ```powershell

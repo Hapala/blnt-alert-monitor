@@ -5,6 +5,10 @@ from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('deployment',pathlib.Path(__file__).resolve().parent.parent/'deploy-isolated.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class DeploymentTests(unittest.TestCase):
+ def test_prepare_requires_flock_before_accounts_or_service_changes(self):
+  with patch.object(m,'run',side_effect=FileNotFoundError('Synthetic missing flock')) as run,patch.object(m.pwd,'getpwnam') as account:
+   with self.assertRaises(FileNotFoundError):m.prepare(pathlib.Path('/unused'),pathlib.Path('/unused/chrome'))
+   self.assertEqual(run.call_args.args[0],['/usr/bin/flock','--version']);self.assertEqual(run.call_count,1);account.assert_not_called()
  def test_both_services_hide_home_and_mounts_but_keep_readonly_dns(self):
   for dm in [False,True]:
    text=m.unit_text(pathlib.Path('/opt/test-release'),dm)

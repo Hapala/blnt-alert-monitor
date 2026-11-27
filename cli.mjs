@@ -1,4 +1,4 @@
-import {readFileSync, mkdirSync, openSync, closeSync, unlinkSync, writeFileSync, renameSync, existsSync} from 'node:fs';
+import {readFileSync, mkdirSync, writeFileSync, renameSync, existsSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -12,6 +12,7 @@ import {processPoolStatuses} from './pool-status-alerts.mjs';
 import {liquiditySettings,liquidityChecksDue,processLiquidity} from './liquidity-alerts.mjs';
 import {deliver,verifyWebhookTarget} from './webhook.mjs';
 import {prunePersonal} from './retention.mjs';
+import {acquireWorkerLock} from './worker-lock.mjs';
 if(process.argv.includes('--check-install')){console.log('Shared entry point imports verified');process.exit(0);}
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -19,16 +20,9 @@ const home = resolve(process.env.BLNT_MONITOR_HOME ?? here);
 const data = resolve(home, 'data');
 mkdirSync(data, {recursive:true, mode:0o700});
 const lockPath = resolve(data,'monitor.lock');
-let lock;
-try {
-  if(existsSync(lockPath)) {
-    const pid=Number(readFileSync(lockPath,'utf8'));
-    if(!Number.isInteger(pid)||pid<1) throw Error('Invalid lock');
-    try { process.kill(pid,0); } catch(error) { if(error.code==='ESRCH') unlinkSync(lockPath); else throw error; }
-  }
-  lock = openSync(lockPath,'wx',0o600); writeFileSync(lock,String(process.pid));
-}
-catch { console.error('Monitor lock exists; inspect running process before removing stale lock.'); process.exit(1); }
+let releaseLock;
+try{releaseLock=acquireWorkerLock(lockPath,'cli.mjs');}
+catch(error){console.error(error.code==='WORKER_LOCK_BUSY'?'Shared worker already running; duplicate start refused.':'Shared worker lock unavailable; unlocked start refused.');process.exit(1);}
 let stopping = false;
 let closeWebsite=()=>{};
 const stop=()=>{stopping=true;closeWebsite();};
@@ -130,5 +124,5 @@ try {
   await collector.close();
   await website.close();
 } finally {
-  db.close(); closeSync(lock); unlinkSync(lockPath);
+  db.close();releaseLock();
 }

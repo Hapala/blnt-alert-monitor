@@ -113,6 +113,7 @@ def prune_backups():
             if path.exists() and not path.is_symlink() and path.resolve().parent==OLD.resolve():shutil.rmtree(path)
 
 def prepare(source,browser):
+    run(['/usr/bin/flock','--version'],stdout=subprocess.DEVNULL)
     try:account=pwd.getpwnam(ACCOUNT)
     except KeyError:
         run(['useradd','--system','--user-group','--home-dir',RUNTIME,'--shell','/usr/sbin/nologin',ACCOUNT]);account=pwd.getpwnam(ACCOUNT)

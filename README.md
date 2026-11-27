@@ -6,6 +6,7 @@ Shared updates use a channel webhook in #price-alerts, visible to BLNT Trade ser
 
 - [Agent workflow and review instructions](AGENTS.md)
 - [Severity and shared alarm behavior](ALARMS.md)
+- [Worker locks and restart recovery](WORKER_LOCKING.md)
 - [Manager review handoff — November 19, 2026](MANAGER_HANDOFF.md)
 - [Proposed cloud migration plan](CLOUD_MIGRATION_PLAN.md)
 - [System requirements, acceptance checks and known gaps](SYSTEM_SPEC.md)

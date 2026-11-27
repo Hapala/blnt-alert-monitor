@@ -1,5 +1,9 @@
 # Changes
 
+## 2026-11-27 — Kernel-held worker locks
+
+Replace PID-only shared/DM locks with nonblocking kernel file locks held for process lifetime and released on graceful exit, crash or reboot. Preserve lock inodes and numeric inspection metadata; reject genuine legacy owners during upgrades and fail closed on unsafe/unavailable locks. Preparation checks util-linux flock before activation. Add real-process concurrency, SIGKILL/descriptor inheritance, reused-PID, partial metadata, legacy-owner and unsafe-path regressions. Personal settings and delivery semantics are unchanged. Deployment verification is recorded separately.
+
 ## 2026-11-27 — Severity and active alarms deployed
 
 Activated `release-1795788626-d9167749` from `e410989` after 122 tests, all executable imports, a 13-price website match and isolation checks. Live checks confirmed advancing worker heartbeats, 13 reserve APRs across both pools, fresh discovery, SQLite integrity, zero watchdog/personal failures and unchanged personal/configuration fingerprints. Both alarm stores are populated, the read-only view works under the DM service account, and Discord has the expected 17 subcommands including `active`. Direct and peer-process credential restrictions passed in both directions. A deployed-code in-memory/fake-transport smoke test confirmed Sev 1/2 delivery attempts and Sev 3/4 recording without real test messages. Initial preparation correctly stopped on stale data: the old collector's PID-only lock referred to `agetty` after PID reuse, with no collector running. The exact obsolete lock was removed after verification, restoring collection before preparation/activation. Price-move conditions must rebuild a continuous hourly history after that gap; other public conditions are evaluated. Restart-safe lock hardening remains a follow-up, recorded in the spec.

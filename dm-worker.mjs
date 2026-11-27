@@ -1,5 +1,5 @@
 import {Client,MessageFlags} from 'discord.js';
-import {readFileSync,mkdirSync,writeFileSync,renameSync,openSync,closeSync,existsSync,unlinkSync} from 'node:fs';
+import {readFileSync,mkdirSync,writeFileSync,renameSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -13,15 +13,14 @@ import {subscriptionTick} from './dm-runtime.mjs';
 import {CommandGate} from './command-gate.mjs';
 import {privateReply} from './discord-format.mjs';
 import {readSharedAlarmReport} from './alarm-view.mjs';
+import {acquireWorkerLock} from './worker-lock.mjs';
 if(process.argv.includes('--check-install')){console.log('DM entry point imports verified');process.exit(0);}
 const home=resolve(process.env.BLNT_MONITOR_HOME??dirname(fileURLToPath(import.meta.url))),data=resolve(home,'data');
 mkdirSync(data,{recursive:true,mode:0o700});
 const lockPath=resolve(data,'dm-worker.lock');
-let lock;
-try {
-  if(existsSync(lockPath)) {const pid=Number(readFileSync(lockPath,'utf8'));if(!Number.isInteger(pid)||pid<1)throw Error('Invalid lock');try{process.kill(pid,0);}catch(e){if(e.code==='ESRCH')unlinkSync(lockPath);else throw e;}}
-  lock=openSync(lockPath,'wx',0o600);writeFileSync(lock,String(process.pid));
-}catch{console.error('DM worker lock exists; inspect the running process before recovery');process.exit(1);}
+let releaseLock;
+try{releaseLock=acquireWorkerLock(lockPath,'dm-worker.mjs');}
+catch(error){console.error(error.code==='WORKER_LOCK_BUSY'?'DM worker already running; duplicate start refused.':'DM worker lock unavailable; unlocked start refused.');process.exit(1);}
 const db=openStore(resolve(data,'monitor.sqlite'));db.exec('PRAGMA busy_timeout=5000');initSubscriptions(db);
 const registry=JSON.parse(readFileSync(new URL('./markets.json',import.meta.url),'utf8'));
 const botTarget=loadBotTarget(),botToken=loadDmToken();
@@ -97,4 +96,4 @@ try {
     for(let i=0;i<60&&!stopping;i++)await delay(1000);
   }while(!stopping);
 }catch{console.error('DM worker startup failed; credential not displayed');process.exitCode=1;}
-finally{client.destroy();db.close();closeSync(lock);unlinkSync(lockPath);}
+finally{client.destroy();db.close();releaseLock();}
